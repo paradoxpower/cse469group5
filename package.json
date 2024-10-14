@@ -1,7 +1,7 @@
 {
-  "name": "eth-todo-list",
+  "name": "coc-ethereum",
   "version": "1.0.0",
-  "description": "Blockchain Todo List Powered By Ethereum",
+  "description": "Blockchain Chain of Custody Powered By Ethereum",
   "main": "truffle-config.js",
   "directories": {
     "test": "test"
