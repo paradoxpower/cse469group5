@@ -19,19 +19,58 @@
 
 	<body>
 		<p>CSE469 Group 5 | Chain of Custody Tool</p>
-		<p>This is sample text to confirm the webpage has loaded</p>
+		
+		<!--Add Evidence Item-->
+		<button id="addCaseButton" type="button">Add Evidence Item</button><br>
+		<label for="caseID">Case ID:</label><br>
+		<input type="text" name="caseID" id="caseID"><br>
+		<label for="itemID">Item ID:</label><br>
+		<input type="text" name="itemID" id="itemID"><br>
+		<label for="password">Password:</label><br>
+		<input type="text" name="password" id="password"><br><br>
+
+		<!--Create Checkout Entry-->
+		<button id="checkoutItemButton" type="button">Create Checkout Entry</button><br>
+		<label for="itemID">Item ID:</label><br>
+		<input type="text" name="itemID" id="itemID"><br>
+		<label for="password">Password:</label><br>
+		<input type="text" name="password" id="password"><br><br>
+
+		<!--Create Checkin Entry-->
+		<button id="checkinItemButton" type="button">Create Checkin Entry</button><br>
+		<label for="itemID">Item ID:</label><br>
+		<input type="text" name="itemID" id="itemID"><br>
+		<label for="password">Password:</label><br>
+		<input type="text" name="password" id="password"><br><br>
+
+		<button id="showCasesButton" type="button">Show Cases</button><br>
+
+		<button id="showItemsButton" type="button">Show Items</button><br>
+		<label for="caseID">Case ID:</label><br>
+		<input type="text" name="caseID" id="caseID"><br><br>
+
+		<button id="showHistoryButton" type="button">Show History</button><br>
+		<label for="password">Password:</label><br>
+		<input type="text" name="password" id="password"><br><br>
+
+		<button id="removeItemButton" type="button">Remove</button><br>
+		<label for="itemID">Item ID:</label><br>
+		<input type="text" name="itemID" id="itemID"><br>
+		<label for="reason">Reason:</label><br>
+		<select name="reason" id="reason">
+			<option value="disposed">DISPOSED</option>
+			<option value="destroyed">DESTROYED</option>
+			<option value="released">RELEASED</option>
+		</select><br>
+		<label for="owner">Owner:</label><br>
+		<input type="text" name="owner" id="owner"><br>
+		<label for="password">Password:</label><br>
+		<input type="text" name="password" id="password"><br><br>
+
+		<button id="initButton" type="button">Create Initial Block</button><br>
+		
+		<button id="verifyButton" type="button">Verify</button><br>
 	</body>
-	
-	<!-- Create very simple button interfaces with no particular layout -->
-	<button id="addCaseButton" type="button">Add</button><br>
-	<button id="checkoutItemButton" type="button">Checkout</button><br>
-	<button id="checkinItemButton" type="button">Checkin</button><br>
-	<button id="showCasesButton" type="button">Show Cases</button><br>
-	<button id="showItemsButton" type="button">Show Items</button><br>
-	<button id="showHistoryButton" type="button">Show History</button><br>
-	<button id="removeItemButton" type="button">Remove</button><br>
-	<button id="initButton" type="button">Init</button><br>
-	<button id="verifyButton" type="button">Verify</button><br>
 
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>

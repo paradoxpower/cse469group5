@@ -1,10 +1,14 @@
 
 # Developer Information
-Group 5
-	Ansh
-	Jackson
-	Margaret
-	Naman
+## Group 5
+
+Ansh
+	
+Jackson
+	
+Margaret
+	
+Naman
 
 # Environment Configurations
 Ubuntu 16.04 (or newer)
