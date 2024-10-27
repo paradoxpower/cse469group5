@@ -99,8 +99,112 @@ App = {
 		const cocList = await App.contracts.ChainOfCustody.deployed()
 		//add the items to the specified case
 		await cocList.addEvidenceItems.call( caseId, itemIds );
+		return true;
 	},
 	
+}
+
+// Define Password Constants
+const BCHOC_PASSWORD_POLICE		= "P80P";
+const BCHOC_PASSWORD_LAWYER		= "L76L";
+const BCHOC_PASSWORD_ANALYST	= "A65A";
+const BCHOC_PASSWORD_EXECUTIVE	= "E69E";
+const BCHOC_PASSWORD_CREATOR	= "C67C";	//note -- creator can have many user-names,
+											//Creator is a user archetype
+const AES_KEY = "R0chLi4uLi4uLi4="; //TODO - confirm this is byte storage
+
+/*
+ * Create supporting methods that multiple buttons will leverage
+ * for functionality (such as password checking)
+ */
+
+/**
+ * @dev Check the input password is valid from the list
+ * @param Password string
+ */
+function checkPassword( inputPassword )
+{
+	//default to an invalid match
+	validPassword = false;
+	//check input against valid passwords
+	if( BCHOC_PASSWORD_POLICE === inputPassword )
+	{
+		validPassword = true;
+	}
+	if( BCHOC_PASSWORD_LAWYER === inputPassword )
+	{
+		validPassword = true;
+	}
+	if( BCHOC_PASSWORD_ANALYST === inputPassword )
+	{
+		validPassword = true;
+	}
+	if( BCHOC_PASSWORD_EXECUTIVE === inputPassword )
+	{
+		validPassword = true;
+	}
+	if( BCHOC_PASSWORD_CREATOR === inputPassword )
+	{
+		validPassword = true;
+	}
+	//return results (will only be true if a match was found)
+	return validPassword;
+}
+
+/**
+ * @dev Function to append output to the textarea on the web page
+ * @param String ot append
+ * @param Boolean of whether this string should be indented
+ */
+function appendTextarea( inputString, addIndent )
+{
+	let txtArea = document.getElementById("textOutput");
+	if( addIndent )
+	{
+		txtArea.value += "\n\t" + inputString;
+	}
+	else
+	{
+		txtArea.value += "\n" + inputString;
+	}
+	//scroll to bottom of textarea with update
+	txtArea.scrollTop = txtArea.scrollHeight;
+}
+
+/**
+ * @dev Date Formatting method
+ */
+function getDateTime()
+{
+    var now     = new Date();
+    var year    = now.getFullYear();
+    var month   = now.getMonth()+1;
+    var day     = now.getDate();
+    var hour    = now.getHours();
+    var minute  = now.getMinutes();
+    var second  = now.getSeconds();
+    if(month.toString().length == 1)
+	{
+         month = '0'+month;
+    }
+    if(day.toString().length == 1)
+	{
+         day = '0'+day;
+    }   
+    if(hour.toString().length == 1)
+	{
+         hour = '0'+hour;
+    }
+    if(minute.toString().length == 1)
+	{
+         minute = '0'+minute;
+    }
+    if(second.toString().length == 1)
+	{
+         second = '0'+second;
+    }
+    var dateTime = year+'-'+month+'-'+day+'T'+hour+':'+minute+':'+second+"Z";
+    return dateTime;
 }
 
 /*
@@ -114,27 +218,93 @@ App = {
 var addCaseElement = document.getElementById("addCaseButton")
 addCaseElement.addEventListener( 'click', function(){
 	console.log("Add Case...") //DEBUG
-	//define arguments to pass
-	let caseID = 1
-	let itemIds = [2]
-	let validInputs = true;
+	let tmpVal = "";
+	
+	//get case ID
+	let caseID = "";
+	tmpVal = document.getElementById("caseID").value;
+	//only translate if field is non-empty
+	if( !((null == tmpVal) || ("" == tmpVal) ) )
+	{
+		caseID = document.getElementById("caseID").value;
+	}
+	//get password
+	let inputPassword = document.getElementById("addPassword").value;
+	//get the full list of items
+	let rawItemIds = "";
+	let itemIds;
+	tmpVal = document.getElementById("addItemID").value;
+	if( !((null == tmpVal) || ("" == tmpVal) ) )
+	{
+		rawItemIds = document.getElementById("addItemID").value;
+		//remove any spaces
+		rawItemIds = rawItemIds.split(' ').join('');
+		//delimit them by ","
+		itemIds = rawItemIds.split(",");
+	}
+	//TODO - Needs a Creator field to associate to the evidence
+	
+	//booleans to check validity of operation
+	let validCaseId = true;
+	let validItemIds = true;
+	let validPassword = checkPassword( inputPassword );
 	
 	//do necessary input/operation verification
-	if( !("number" === typeof caseID) )
+	if( "" === caseID )
 	{
-		validInputs = false;
+		validCaseId = false;
 	}
 	if( !(Array.isArray(itemIds)) )
 	{
-		validInputs = false;
+		validItemIds = false;
+	}
+	else
+	{
+		//ensure no ids are non-number
+		for( var i = 0; i < itemIds.length; i++ )
+		{
+			itemIds[i] = Number(itemIds[i]);
+			if( isNaN(itemIds[0]) )
+			{
+				validItemIds = false;
+				i = itemIds.length; //quick exit
+			}
+		}
 	}
 	//Notice -- Each item must have a unique ID, and that uniqueness is
 	//			checked as part of the Contract (not by the web app)
 	
 	//call he method
-	if( validInputs )
+	if( validCaseId && validItemIds && validPassword )
 	{
-		App.addCaseItems( caseID, itemIds )
+		var addSuccess = App.addCaseItems( caseID, itemIds )
+		//follow project guidelines of expect output
+		if( addSuccess )
+		{
+			var fmtDate = getDateTime();
+			for( var i = 0; i < itemIds.length; i++ )
+			{
+				appendTextarea( ("Added Item " + itemIds[i]), false);
+				appendTextarea("Status: CHECKEDIN", false);
+				appendTextarea( ("Time of action: " + fmtDate), false);
+			}
+		}
+	}
+	else
+	{
+		appendTextarea("Add Evidence Error: ", false);
+		if( !validCaseId )
+		{
+			appendTextarea("Invalid Case ID", true);
+		}
+		if( !validItemIds )
+		{
+			appendTextarea("Invalid Item ID", true);
+		}
+		if( !validPassword )
+		{
+			appendTextarea("Invalid Password", true);
+		}
 	}
 });
 
