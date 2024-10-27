@@ -7,6 +7,36 @@
     <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
     <title>COC Tool</title>
 
+	<style>
+		/* Create two equal columns that floats next to each other */
+		.majorColumn {
+			float: left;
+			width: 50%;
+			padding: 15px;
+		}
+		
+		/* Create variant size columns */
+		.column {
+		  float: left;
+		  padding: 10px;
+		}
+
+		/* Clear floats after the columns */
+		.row {
+		  content: "";
+		  display: table;
+		  clear: both;
+		}
+		
+		/* Enable scrolling for overflow info in the text area & disable resizing by user */
+		textarea {
+			overflow-y: scroll;
+			height: 300px;
+			resize: none; /* Remove this if you want the user to resize the textarea */
+		}
+	</style>
+	
+	
     <!-- Bootstrap -->
     <link href="vendor/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -18,58 +48,121 @@
     <![endif]-->
 
 	<body>
-		<p>CSE469 Group 5 | Chain of Custody Tool</p>
+		<h1>CSE469 Group 5 | Chain of Custody Tool</h1>
 		
-		<!--Add Evidence Item-->
-		<button id="addCaseButton" type="button">Add Evidence Item</button><br>
-		<label for="caseID">Case ID:</label><br>
-		<input type="text" name="caseID" id="caseID"><br>
-		<label for="itemID">Item ID:</label><br>
-		<input type="text" name="itemID" id="itemID"><br>
-		<label for="password">Password:</label><br>
-		<input type="text" name="password" id="password"><br><br>
+		<div class="majorColumn">
+			<hr>
+			<!--Create Initial Block-->
+			<button id="initButton" type="button">Create Initial Block</button><br><br>
+			
+			<hr>
+			<!--Add Evidence Item-->
+			<div class="row">
+				<div class="column">
+					<label for="caseID">Case ID:</label><br>
+					<input type="text" name="caseID" id="caseID"><br>
+				</div>
+				<div class="column">
+					<label for="itemID">Item ID:</label><br>
+					<input type="text" name="itemID" id="itemID"><br>
+				</div>
+				<div class="column">
+					<label for="password">Password:</label><br>
+					<input type="text" name="password" id="password"><br>
+				</div>
+			</div>
+			<button id="addCaseButton" type="button">Add Evidence Item</button><br><br>
 
-		<!--Create Checkout Entry-->
-		<button id="checkoutItemButton" type="button">Create Checkout Entry</button><br>
-		<label for="itemID">Item ID:</label><br>
-		<input type="text" name="itemID" id="itemID"><br>
-		<label for="password">Password:</label><br>
-		<input type="text" name="password" id="password"><br><br>
+			<hr>
+			<!--Create Checkout Entry-->
+			<div class="row">
+				<div class="column">
+					<label for="itemID">Item ID:</label><br>
+					<input type="text" name="itemID" id="itemID"><br>
+				</div>
+				<div class="column">
+					<label for="password">Password:</label><br>
+					<input type="text" name="password" id="password"><br>
+				</div>
+			</div>
+			<button id="checkoutItemButton" type="button">Create Checkout Entry</button><br><br>
 
-		<!--Create Checkin Entry-->
-		<button id="checkinItemButton" type="button">Create Checkin Entry</button><br>
-		<label for="itemID">Item ID:</label><br>
-		<input type="text" name="itemID" id="itemID"><br>
-		<label for="password">Password:</label><br>
-		<input type="text" name="password" id="password"><br><br>
+			<hr>
+			<!--Create Checkin Entry-->
+			<div class="row">
+				<div class="column">
+					<label for="itemID">Item ID:</label><br>
+					<input type="text" name="itemID" id="itemID"><br>
+				</div>
+				<div class="column">
+					<label for="password">Password:</label><br>
+					<input type="text" name="password" id="password"><br>
+				</div>
+			</div>
+			<button id="checkinItemButton" type="button">Create Checkin Entry</button><br><br>
 
-		<button id="showCasesButton" type="button">Show Cases</button><br>
+			<hr>
+			<!--Show Cases-->
+			<button id="showCasesButton" type="button">Show Cases</button><br><br>
 
-		<button id="showItemsButton" type="button">Show Items</button><br>
-		<label for="caseID">Case ID:</label><br>
-		<input type="text" name="caseID" id="caseID"><br><br>
+			<hr>
+			<!--Show Items-->
+			<div class="row">
+				<div class="column">
+					<label for="caseID">Case ID:</label><br>
+					<input type="text" name="caseID" id="caseID"><br>
+				</div>
+			</div>
+			<button id="showItemsButton" type="button">Show Items</button><br><br>
 
-		<button id="showHistoryButton" type="button">Show History</button><br>
-		<label for="password">Password:</label><br>
-		<input type="text" name="password" id="password"><br><br>
-
-		<button id="removeItemButton" type="button">Remove</button><br>
-		<label for="itemID">Item ID:</label><br>
-		<input type="text" name="itemID" id="itemID"><br>
-		<label for="reason">Reason:</label><br>
-		<select name="reason" id="reason">
-			<option value="disposed">DISPOSED</option>
-			<option value="destroyed">DESTROYED</option>
-			<option value="released">RELEASED</option>
-		</select><br>
-		<label for="owner">Owner:</label><br>
-		<input type="text" name="owner" id="owner"><br>
-		<label for="password">Password:</label><br>
-		<input type="text" name="password" id="password"><br><br>
-
-		<button id="initButton" type="button">Create Initial Block</button><br>
+			<hr>
+			<!--Show History-->
+			<div class="row">
+				<div class="column">
+			<label for="password">Password:</label><br>
+			<input type="text" name="password" id="password"><br>
+				</div>
+			</div>
+			<button id="showHistoryButton" type="button">Show History</button><br><br>
+			
+			<hr>
+			<!--Remove Evidence-->
+			<div class="row">
+				<div class="column">
+					<label for="itemID">Item ID:</label><br>
+					<input type="text" name="itemID" id="itemID"><br>
+				</div>
+				<div class="column">
+					<label for="reason">Reason:</label><br>
+					<select name="reason" id="reason">
+						<option value="disposed">DISPOSED</option>
+						<option value="destroyed">DESTROYED</option>
+						<option value="released">RELEASED</option>
+					</select><br>
+				</div>
+				<div class="column">
+					<label for="owner">Owner:</label><br>
+					<input type="text" name="owner" id="owner"><br>
+				</div>
+				<div class="column">
+					<label for="password">Password:</label><br>
+					<input type="text" name="password" id="password"><br>
+				</div>
+			</div>
+			<button id="removeItemButton" type="button">Remove</button><br><br>
+			
+			<hr>
+			<!--Verify-->
+			<button id="verifyButton" type="button">Verify</button><br><br>
+		</div>
 		
-		<button id="verifyButton" type="button">Verify</button><br>
+		<div class="majorColumn">
+			<label for="textOutput">Program Output</label><br>
+			<textarea readonly rows="25" cols="75" name="textOutput" id="textOutput">
+System has been started up successfully.
+			</textarea><br>
+		</div>
+		
 	</body>
 
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
