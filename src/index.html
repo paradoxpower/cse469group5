@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <title>COC Tool</title>
+
+	<style>
+		/* Create two equal columns that floats next to each other */
+		.majorColumn {
+			float: left;
+			width: 50%;
+			padding: 15px;
+		}
+		
+		/* Create variant size columns */
+		.column {
+		  float: left;
+		  padding: 10px;
+		}
+
+		/* Clear floats after the columns */
+		.row {
+		  content: "";
+		  display: table;
+		  clear: both;
+		}
+		
+		/* Enable scrolling for overflow info in the text area & disable resizing by user */
+		textarea {
+			overflow-y: scroll;
+			height: 300px;
+			resize: none; /* Remove this if you want the user to resize the textarea */
+		}
+	</style>
+	
+	
+    <!-- Bootstrap -->
+    <link href="vendor/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
+      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+	<body>
+		<h1>CSE469 Group 5 | Chain of Custody Tool</h1>
+		
+		<div class="majorColumn">
+			<hr>
+			<!--Create Initial Block-->
+			<button id="initButton" type="button">Create Initial Block</button><br><br>
+			
+			<hr>
+			<!--Add Evidence Item-->
+			<div class="row">
+				<div class="column">
+					<label for="caseID">Case ID:</label><br>
+					<input type="text" name="caseID" id="caseID"><br>
+				</div>
+				<div class="column">
+					<label for="addItemID">Item ID:</label><br>
+					<input type="text" name="addItemID" id="addItemID"><br>
+				</div>
+				<div class="column">
+					<label for="addPassword">Password:</label><br>
+					<input type="text" name="addPassword" id="addPassword"><br>
+				</div>
+			</div>
+			<button id="addCaseButton" type="button">Add Evidence Item</button><br><br>
+
+			<hr>
+			<!--Create Checkout Entry-->
+			<div class="row">
+				<div class="column">
+					<label for="checkoutItemID">Item ID:</label><br>
+					<input type="text" name="checkoutItemID" id="checkoutItemID"><br>
+				</div>
+				<div class="column">
+					<label for="checkoutPassword">Password:</label><br>
+					<input type="text" name="checkoutPassword" id="checkoutPassword"><br>
+				</div>
+			</div>
+			<button id="checkoutItemButton" type="button">Create Checkout Entry</button><br><br>
+
+			<hr>
+			<!--Create Checkin Entry-->
+			<div class="row">
+				<div class="column">
+					<label for="checkinItemID">Item ID:</label><br>
+					<input type="text" name="checkinItemID" id="checkinItemID"><br>
+				</div>
+				<div class="column">
+					<label for="checkinPassword">Password:</label><br>
+					<input type="text" name="checkinPassword" id="checkinPassword"><br>
+				</div>
+			</div>
+			<button id="checkinItemButton" type="button">Create Checkin Entry</button><br><br>
+
+			<hr>
+			<!--Show Cases-->
+			<button id="showCasesButton" type="button">Show Cases</button><br><br>
+
+			<hr>
+			<!--Show Items-->
+			<div class="row">
+				<div class="column">
+					<label for="caseID">Case ID:</label><br>
+					<input type="text" name="caseID" id="caseID"><br>
+				</div>
+			</div>
+			<button id="showItemsButton" type="button">Show Items</button><br><br>
+
+			<hr>
+			<!--Show History-->
+			<div class="row">
+				<div class="column">
+			<label for="historyPassword">Password:</label><br>
+			<input type="text" name="historyPassword" id="historyPassword"><br>
+				</div>
+			</div>
+			<button id="showHistoryButton" type="button">Show History</button><br><br>
+			
+			<hr>
+			<!--Remove Evidence-->
+			<div class="row">
+				<div class="column">
+					<label for="removeItemID">Item ID:</label><br>
+					<input type="text" name="removeItemID" id="removeItemID"><br>
+				</div>
+				<div class="column">
+					<label for="reason">Reason:</label><br>
+					<select name="reason" id="reason">
+						<option value="disposed">DISPOSED</option>
+						<option value="destroyed">DESTROYED</option>
+						<option value="released">RELEASED</option>
+					</select><br>
+				</div>
+				<div class="column">
+					<label for="owner">Owner:</label><br>
+					<input type="text" name="owner" id="owner"><br>
+				</div>
+				<div class="column">
+					<label for="removePassword">Password:</label><br>
+					<input type="text" name="removePassword" id="removePassword"><br>
+				</div>
+			</div>
+			<button id="removeItemButton" type="button">Remove</button><br><br>
+			
+			<hr>
+			<!--Verify-->
+			<button id="verifyButton" type="button">Verify</button><br><br>
+		</div>
+		
+		<div class="majorColumn">
+			<label for="textOutput">Program Output</label><br>
+			<textarea readonly rows="25" cols="75" name="textOutput" id="textOutput">System has been started up successfully.</textarea><br>
+		</div>
+		
+	</body>
+
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script src="vendor/bootstrap/dist/js/bootstrap.min.js"></script>
+	<script src="vendor/web3/dist/web3.js"></script>
+    <script src="vendor/truffle-contract/dist/truffle-contract.js"></script>
+	<script src="app.js"></script>
+	<!-- Load the app to control the chain of custody objects -->
+    
+  </body>
+</html>
