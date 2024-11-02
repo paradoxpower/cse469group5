@@ -8,10 +8,33 @@
     <title>COC Tool</title>
 
 	<style>
-		/* Create two equal columns that floats next to each other */
-		.majorColumn {
+		/* Create two equal columns where the right is static and the left can scroll*/
+		.Container {
+			height: 100%;
+		}
+		
+		.Wrapper {
+			position: absolute;
+			width: 100%;
+			height: 100%;
+		}
+
+		.Wrapper>div {
+			height: 100%;
+		}
+		
+		.leftColumn {
 			float: left;
 			width: 50%;
+			height: 100%;
+			overflow: auto;
+			padding: 15px;
+		}
+		
+		.rightColumn {
+			float: left;
+			width: 50%;
+			height: 100%;
 			padding: 15px;
 		}
 		
@@ -47,24 +70,42 @@
       <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
     <![endif]-->
 
+	<!-- Main Body of widgets -->
 	<body>
-		<h1>CSE469 Group 5 | Chain of Custody Tool</h1>
+		<!-- Container and Wrapper split the screen in 2 halves -->
+		<div class="Container">
+		<div class="Wrapper">
 		
-		<div class="majorColumn">
+		<div class="leftColumn">
+			<h1>CSE469 Group 5 | Chain of Custody Tool</h1>
 			<hr>
 			<!--Create Initial Block-->
+			<h4>Create Initial Block</h4>
 			<button id="initButton" type="button">Create Initial Block</button><br><br>
 			
 			<hr>
+			<!--Verify-->
+			<h4>Verify Blockchain</h4>
+			<button id="verifyButton" type="button">Verify</button><br><br>
+			
+			<hr>
 			<!--Add Evidence Item-->
+			<h4>Add Evidence Item</h4>
 			<div class="row">
 				<div class="column">
-					<label for="caseID">Case ID:</label><br>
-					<input type="text" name="caseID" id="caseID"><br>
+					<label for="addCaseID">Case ID:</label><br>
+					<input type="text" name="addCaseID" id="addCaseID"><br>
 				</div>
 				<div class="column">
-					<label for="addItemID">Item ID:</label><br>
+					<label for="addItemID">Item ID(s):</label><br>
 					<input type="text" name="addItemID" id="addItemID"><br>
+					<label>(delimit multiple with commas)</label><br>
+				</div>
+			</div>
+			<div class="row">			
+				<div class="column">
+					<label for="addCreatorId">Creator:</label><br>
+					<input type="text" name="addCreatorId" id="addCreatorId"><br>
 				</div>
 				<div class="column">
 					<label for="addPassword">Password:</label><br>
@@ -75,6 +116,7 @@
 
 			<hr>
 			<!--Create Checkout Entry-->
+			<h4>Checkout Evidence</h4>
 			<div class="row">
 				<div class="column">
 					<label for="checkoutItemID">Item ID:</label><br>
@@ -89,6 +131,7 @@
 
 			<hr>
 			<!--Create Checkin Entry-->
+			<h4>Checkin Evidence</h4>
 			<div class="row">
 				<div class="column">
 					<label for="checkinItemID">Item ID:</label><br>
@@ -100,33 +143,10 @@
 				</div>
 			</div>
 			<button id="checkinItemButton" type="button">Create Checkin Entry</button><br><br>
-
-			<hr>
-			<!--Show Cases-->
-			<button id="showCasesButton" type="button">Show Cases</button><br><br>
-
-			<hr>
-			<!--Show Items-->
-			<div class="row">
-				<div class="column">
-					<label for="caseID">Case ID:</label><br>
-					<input type="text" name="caseID" id="caseID"><br>
-				</div>
-			</div>
-			<button id="showItemsButton" type="button">Show Items</button><br><br>
-
-			<hr>
-			<!--Show History-->
-			<div class="row">
-				<div class="column">
-			<label for="historyPassword">Password:</label><br>
-			<input type="text" name="historyPassword" id="historyPassword"><br>
-				</div>
-			</div>
-			<button id="showHistoryButton" type="button">Show History</button><br><br>
 			
 			<hr>
 			<!--Remove Evidence-->
+			<h4>Remove Evidence</h4>
 			<div class="row">
 				<div class="column">
 					<label for="removeItemID">Item ID:</label><br>
@@ -141,7 +161,7 @@
 					</select><br>
 				</div>
 				<div class="column">
-					<label for="owner">Owner:</label><br>
+					<label for="owner">[If "RELEASED"] Owner:</label><br>
 					<input type="text" name="owner" id="owner"><br>
 				</div>
 				<div class="column">
@@ -150,16 +170,65 @@
 				</div>
 			</div>
 			<button id="removeItemButton" type="button">Remove</button><br><br>
-			
+
 			<hr>
-			<!--Verify-->
-			<button id="verifyButton" type="button">Verify</button><br><br>
+			<!--Show Cases-->
+			<h4>Show Cases</h4>
+			<button id="showCasesButton" type="button">Show Cases</button><br><br>
+
+			<hr>
+			<!--Show Items-->
+			<h4>Show Items</h4>
+			<div class="row">
+				<div class="column">
+					<label for="showCaseID">Case ID:</label><br>
+					<input type="text" name="showCaseID" id="showCaseID"><br>
+				</div>
+			</div>
+			<button id="showItemsButton" type="button">Show Items</button><br><br>
+
+			<hr>
+			<!--Show History-->
+			<h4>Show History</h4>
+			<div class="row">
+				<div class="column">
+					<label for="historyPassword">Password:</label><br>
+					<input type="text" name="historyPassword" id="historyPassword"><br>
+				</div>
+			</div>
+			<div class="row">
+				<div class="column">
+					<label>[Optional Arguments]</label>
+				</div>
+			</div>
+			<div class="row">
+				<div class="column">
+					<label for="historyCaseId">Case ID:</label><br>
+					<input type="text" name="historyCaseId" id="historyCaseId"><br>
+				</div>
+				<div class="column">
+					<label for="historyItemId">Item ID:</label><br>
+					<input type="text" name="historyItemId" id="historyItemId"><br>
+				</div>
+				<div class="column">
+					<label for="historyNumEntry">Number of Entries:</label><br>
+					<input type="text" name="historyNumEntry" id="historyNumEntry"><br>
+				</div>
+				<div class="column">
+					<input type="checkbox" name="historyReverseFlag" id="historyReverseFlag">
+					<label for="historyReverseFlag">Newst-to-Oldest Order</label><br>
+				</div>
+			</div>
+			<button id="showHistoryButton" type="button">Show History</button><br><br>
 		</div>
 		
-		<div class="majorColumn">
+		<div class="rightColumn">
 			<label for="textOutput">Program Output</label><br>
 			<textarea readonly rows="25" cols="75" name="textOutput" id="textOutput">System has been started up successfully.</textarea><br>
 		</div>
+		
+		</div> <!-- End Wrapper -->
+		</div> <!-- End Container -->
 		
 	</body>
 

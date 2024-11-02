@@ -90,15 +90,44 @@ App = {
 	 * @param caseId The ID of the case to which evidence is being added.
 	 * @param itemIds Array of evidence item IDs being added.
 	 */
-	addCaseItems: async ( caseId, itemIds ) => {
+	addCaseItems: async ( caseId, itemIds, creatorName ) => {
 		console.log("App.addCaseItems()") //DEBUG
 		console.log("APP case id: " + caseId)
+		console.log("APP creator id: " + creatorName)
 		for( let i = 0; i < itemIds.length; i++ )
 			console.log("APP item id " + i + ": " + itemIds[i] )
 		//get the deployed Chain of Custody
 		const cocList = await App.contracts.ChainOfCustody.deployed()
 		//add the items to the specified case
-		await cocList.addEvidenceItems.call( caseId, itemIds );
+		await cocList.addEvidenceItems.call( caseId, itemIds, creatorName );
+		return true;
+	},
+	
+	/**
+	 * @dev Function to update an item to CHECKEDOUT state
+	 * @param itemId The item attempted to be checked out
+	 */
+	checkoutItem: async ( itemId ) => {
+		console.log("App.checkoutItem()") //DEBUG
+		console.log("APP item id: " + itemId)
+		//get the deployed Chain of Custody
+		const cocList = await App.contracts.ChainOfCustody.deployed()
+		//checkout the specified item if possible
+		//await cocList.???.call( itemId );
+		return true;
+	},
+	
+	/**
+	 * @dev Function to update an item to CHECKEDIN state
+	 * @param itemId The item attempted to be checked out
+	 */
+	checkinItem: async ( itemId ) => {
+		console.log("App.checkinItem()") //DEBUG
+		console.log("APP item id: " + itemId)
+		//get the deployed Chain of Custody
+		const cocList = await App.contracts.ChainOfCustody.deployed()
+		//checkout the specified item if possible
+		//await cocList.???.call( itemId );
 		return true;
 	},
 	
@@ -222,11 +251,11 @@ addCaseElement.addEventListener( 'click', function(){
 	
 	//get case ID
 	let caseID = "";
-	tmpVal = document.getElementById("caseID").value;
+	tmpVal = document.getElementById("addCaseID").value;
 	//only translate if field is non-empty
 	if( !((null == tmpVal) || ("" == tmpVal) ) )
 	{
-		caseID = document.getElementById("caseID").value;
+		caseID = document.getElementById("addCaseID").value;
 	}
 	//get password
 	let inputPassword = document.getElementById("addPassword").value;
@@ -242,17 +271,34 @@ addCaseElement.addEventListener( 'click', function(){
 		//delimit them by ","
 		itemIds = rawItemIds.split(",");
 	}
-	//TODO - Needs a Creator field to associate to the evidence
+	//get Creator Name
+	let creatorName = "";
+	tmpVal = document.getElementById("addCreatorId").value;
+	//only translate if field is non-empty
+	if( !((null == tmpVal) || ("" == tmpVal) ) )
+	{
+		creatorName = document.getElementById("addCreatorId").value;
+		//take only the first 12 characters
+		if( creatorName.length > 12 )
+		{
+			creatorName = creatorName.substring(0,12);
+		}
+	}
 	
 	//booleans to check validity of operation
 	let validCaseId = true;
 	let validItemIds = true;
 	let validPassword = checkPassword( inputPassword );
+	let validCreator = true;
 	
 	//do necessary input/operation verification
 	if( "" === caseID )
 	{
 		validCaseId = false;
+	}
+	if( "" === creatorName )
+	{
+		validCreator = false;
 	}
 	if( !(Array.isArray(itemIds)) )
 	{
@@ -275,9 +321,9 @@ addCaseElement.addEventListener( 'click', function(){
 	//			checked as part of the Contract (not by the web app)
 	
 	//call he method
-	if( validCaseId && validItemIds && validPassword )
+	if( validCaseId && validItemIds && validPassword && validCreator )
 	{
-		var addSuccess = App.addCaseItems( caseID, itemIds )
+		var addSuccess = App.addCaseItems( caseID, itemIds, creatorName )
 		//follow project guidelines of expect output
 		if( addSuccess )
 		{
@@ -305,35 +351,121 @@ addCaseElement.addEventListener( 'click', function(){
 		{
 			appendTextarea("Invalid Password", true);
 		}
+		if( !validCreator )
+		{
+			appendTextarea("Invalid Creator", true);
+		}
 	}
 });
 
 /**
- * @dev 
+ * @dev Attempt to add a Checkout log for an evidence item to the blockchain
  */
 var checkoutElement = document.getElementById("checkoutItemButton")
 checkoutElement.addEventListener( 'click', function(){
 	console.log("Checkout Item...") //DEBUG
-	//define arguments to pass
+	let tmpVal = "";
+	
+	//get item ID
+	let itemID = "";
+	tmpVal = document.getElementById("checkoutItemID").value;
+	//only translate if field is non-empty
+	if( !((null == tmpVal) || ("" == tmpVal) ) )
+	{
+		itemID = document.getElementById("checkoutItemID").value;
+	}
+	//get password
+	let inputPassword = document.getElementById("checkoutPassword").value;
+	
+	//booleans to check validity of operation
+	let validItemId = true;
+	let validPassword = checkPassword( inputPassword );
 	
 	//do necessary input/operation verification
+	if( "" === itemID )
+	{
+		validItemId = false;
+	}
 	
 	//call the method
-	
+	if( validItemId && validPassword )
+	{
+		var checkoutSuccess = App.checkoutItem( itemID )
+		//follow project guidelines of expect output
+		if( checkoutSuccess )
+		{
+			var fmtDate = getDateTime();
+			appendTextarea( ("Checkedout Item " + itemID), false);
+			appendTextarea( ("Time of action: " + fmtDate), false);
+		}
+	}
+	else
+	{
+		appendTextarea("Checkout Evidence Error: ", false);
+		if( !validItemId )
+		{
+			appendTextarea("Invalid Item ID", true);
+		}
+		if( !validPassword )
+		{
+			appendTextarea("Invalid Password", true);
+		}
+	}
 });
 
 /**
- * @dev 
+ * @dev Attempt to add a Checkin log for an evidence item to the blockchain
  */
 var checkinElement = document.getElementById("checkinItemButton")
 checkinElement.addEventListener( 'click', function(){
 	console.log("Checkin Item...") //DEBUG
-	//define arguments to pass
+	let tmpVal = "";
+	
+	//get item ID
+	let itemID = "";
+	tmpVal = document.getElementById("checkinItemID").value;
+	//only translate if field is non-empty
+	if( !((null == tmpVal) || ("" == tmpVal) ) )
+	{
+		itemID = document.getElementById("checkinItemID").value;
+	}
+	//get password
+	let inputPassword = document.getElementById("checkinPassword").value;
+	
+	//booleans to check validity of operation
+	let validItemId = true;
+	let validPassword = checkPassword( inputPassword );
 	
 	//do necessary input/operation verification
+	if( "" === itemID )
+	{
+		validItemId = false;
+	}
 	
 	//call the method
-	
+	if( validItemId && validPassword )
+	{
+		var checkinSuccess = App.checkinItem( itemID )
+		//follow project guidelines of expect output
+		if( checkinSuccess )
+		{
+			var fmtDate = getDateTime();
+			appendTextarea( ("Checkedin Item " + itemID), false);
+			appendTextarea( ("Time of action: " + fmtDate), false);
+		}
+	}
+	else
+	{
+		appendTextarea("Checkin Evidence Error: ", false);
+		if( !validItemId )
+		{
+			appendTextarea("Invalid Item ID", true);
+		}
+		if( !validPassword )
+		{
+			appendTextarea("Invalid Password", true);
+		}
+	}
 });
 
 /**
