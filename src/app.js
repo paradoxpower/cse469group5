@@ -140,7 +140,95 @@ const BCHOC_PASSWORD_ANALYST	= "A65A";
 const BCHOC_PASSWORD_EXECUTIVE	= "E69E";
 const BCHOC_PASSWORD_CREATOR	= "C67C";	//note -- creator can have many user-names,
 											//Creator is a user archetype
-const AES_KEY = "R0chLi4uLi4uLi4="; //TODO - confirm this is byte storage
+
+/*
+ * Create supporting methods and variables that will perform data
+ * encryption/decryption
+ */
+
+//Define AES ECB Key
+const AES_KEY = "R0chLi4uLi4uLi4=";
+var byteEncoded = stringToByteArray( AES_KEY );
+
+/*
+	Example flow of the following function calls
+		let startStr = "S0m3-Str1ng-t0-us3";
+		console.log( startStr );
+		let localBytes = stringToByteArray( startStr );
+		let eByte = encryptBytes( localBytes );
+		let dBytes = decryptBytes( eByte );
+		console.log( byteArrayToString(dBytes) );
+*/
+
+
+/**
+ * @dev Method to convert a String to a Byte array for encypting/decrypting
+ * @param String to convert to a byte array
+ */
+function stringToByteArray( inputString )
+{
+	let encodedBytes = [];
+	//parse each character in the string and get its byte equivilent for the array
+	for( var i = 0; i < inputString.length; i++ )
+	{
+		encodedBytes = encodedBytes.concat( inputString.charCodeAt(i) );
+	}
+	return encodedBytes;
+}
+
+/**
+ * @dev Method to convert a byte array to a string for I/O operations
+ * @param Byte Array to convert
+ */
+function byteArrayToString( inputBytes )
+{
+	let strResult = "";
+	//parse each byte in the array and get its char equivilent to postfix
+	for( var i = 0; i < inputBytes.length; i++ )
+	{
+		strResult += String.fromCharCode( inputBytes[i] );
+	}
+	return strResult;
+}
+
+/**
+ * @dev Encrypt an input byte array using the constant AES_KEY
+ * @param Bytes to encrypt
+ */
+function encryptBytes( inputBytes )
+{
+	console.log( "Encrypting..." );
+	let AES_KEY_length = byteEncoded.length; //how many unique bytes are in the key for XOR processing
+	let encryptedBytes = [];
+	//Perform byte-by-byte XOR operation to convert the input
+	//into an encrypted byte value
+	for( var i = 0; i < inputBytes.length; i++ )
+	{
+		let keyPos = i % AES_KEY_length;
+		encryptedBytes = encryptedBytes.concat( byteEncoded[keyPos] ^ inputBytes[i] );
+	}
+	return encryptedBytes;
+}
+
+/**
+ * @dev Decrypt an input byte array using the constant AES_KEY
+ * @param Bytes to decrypt
+ */
+function decryptBytes( inputBytes )
+{
+	console.log( "Decrypting..." );
+	let AES_KEY_length = byteEncoded.length; //how many unique bytes are in the key for XOR processing
+	let decryptedBytes = [];
+	//Perform byte-by-byte XOR operation to convert the input
+	//back to its original byte value
+	for( var i = 0; i < inputBytes.length; i++ )
+	{
+		let keyPos = i % AES_KEY_length;
+		decryptedBytes = decryptedBytes.concat( byteEncoded[keyPos] ^ inputBytes[i] );
+	}
+	return decryptedBytes;
+}
+
 
 /*
  * Create supporting methods that multiple buttons will leverage
@@ -310,7 +398,7 @@ addCaseElement.addEventListener( 'click', function(){
 		for( var i = 0; i < itemIds.length; i++ )
 		{
 			itemIds[i] = Number(itemIds[i]);
-			if( isNaN(itemIds[0]) )
+			if( isNaN(itemIds[i]) )
 			{
 				validItemIds = false;
 				i = itemIds.length; //quick exit
@@ -320,10 +408,13 @@ addCaseElement.addEventListener( 'click', function(){
 	//Notice -- Each item must have a unique ID, and that uniqueness is
 	//			checked as part of the Contract (not by the web app)
 	
-	//call he method
+	//call the method
 	if( validCaseId && validItemIds && validPassword && validCreator )
 	{
-		var addSuccess = App.addCaseItems( caseID, itemIds, creatorName )
+		let encryptedCaseID = encryptBytes( stringToByteArray( caseID ) );
+		//TODO -- encrypt the Item IDs
+	
+		var addSuccess = App.addCaseItems( encryptedCaseID, itemIds, creatorName )
 		//follow project guidelines of expect output
 		if( addSuccess )
 		{
