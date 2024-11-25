@@ -12,7 +12,7 @@
 #include <iomanip>
 #include <sstream>
 #include <vector>
-#include <ctime>
+#include <chrono>
 //library supporting hashes
 #include <openssl/md5.h>
 #include <openssl/sha.h>
@@ -40,7 +40,7 @@ unsigned char blockOwner[BLOCK_OWNER_SIZE];
 //make a union to simplify data access in memory
 union
 {
-	double dblTime;
+	uint64_t dblTime;
 	unsigned char byteTime[BLOCK_TIMESTAMP_SIZE];
 } blockTimestamp;
 union
@@ -79,7 +79,7 @@ const int BLOCK_DATA_LEN_OFFSET = BLOCK_OWNER_OFFSET + BLOCK_OWNER_SIZE;
 const int BLOCK_DATA_OFFSET = BLOCK_DATA_LEN_OFFSET + BLOCK_DATA_LEN_SIZE;
 const int BLOCK_MIN_SIZE = BLOCK_DATA_OFFSET;
 
-//to simplify state checking create an enumeration
+//to simplify state checking, create an enumeration
 enum evidenceState { INITIAL, CHECKEDIN, CHECKEDOUT, DISPOSED, DESTROYED, RELEASED };
 
 //password constants
@@ -115,7 +115,7 @@ bool fileExists()
 }
  
 /**
- * @dev file write method
+ * @dev method that writes the argument string to the end of the file
  */
 void writeToFile(string writeText)
 {
@@ -181,6 +181,42 @@ void decryptBytes( unsigned char* itemToDecrypt, int itemLength )
 		int keyPosition = i % AES_KEY_length;
 		itemToDecrypt[i] = itemToDecrypt[i] ^ AES_KEY[keyPosition];
 	}
+}
+
+/**
+ * @dev Single method to get time
+ */
+uint64_t unixTimestamp()
+{
+	auto curTime = chrono::system_clock::now().time_since_epoch();
+	auto curTimeMs = chrono::duration_cast<chrono::microseconds>(curTime);
+	uint64_t micro = curTimeMs.count();
+	return micro;
+}
+
+/**
+ * @dev Translate an Epoch into formatted time string
+ */
+string translateTimestamp( uint64_t inTime )
+{
+	stringstream ss;
+	string result;
+	//extract the microseconds from the input Time
+	int microseconds = inTime % 1000000;
+	time_t remainder = inTime / 1000000;
+	//format the remaining YYYY-MM-DD & HH:M:SS time
+	struct tm* time = localtime(&remainder);
+	char buffer[80];
+	strftime( buffer, 80, "%FT%T.", time );
+	//transalte to a string and trim off excess characters
+	string tmpStr;
+	tmpStr.append((const char*)&buffer[0], 80);
+	tmpStr = tmpStr.substr(0, tmpStr.find("."));
+	//concat the entire time measurement into a single string
+	ss << tmpStr << "." << to_string(microseconds) << "Z";
+	result = ss.str();
+	//return the result
+	return result;
 }
 
 /**
@@ -517,9 +553,8 @@ void addItemToCase( string inCaseId, string inItemId, string inCreator )
 	int evidenceState = getEvidenceState( &itemID[0] );
 	if( -1 == evidenceState)
 	{
-		printf("This is new evidence\n");
 		//get the time the evidence was added
-		double timeOfEvent = time(nullptr);
+		uint64_t timeOfEvent = unixTimestamp();
 		
 		//evidence ID is unique and should be added
 		//Capture timestamp and store
@@ -542,6 +577,11 @@ void addItemToCase( string inCaseId, string inItemId, string inCreator )
 		string nextBlock = blockToString( "" );
 		//append new block to end
 		writeToFile( nextBlock );
+		
+		//event completed successfully, perform stdout operations
+		printf("Added item: %s\n", inItemId.c_str());
+		printf("Status: CHECKEDIN\n");
+		printf("Time of Action: %s\n", translateTimestamp(timeOfEvent).c_str() );
 	}
 	else
 	{
@@ -568,9 +608,8 @@ void checkoutItem( string inItemId, int checkoutPassword )
 	//operation only permitted if evidence is CHECKEDIN
 	if( CHECKEDIN == evidenceState)
 	{
-		printf("Evidence can be Checked Out\n");
 		//get the time the evidence was checked out
-		double timeOfEvent = time(nullptr);
+		uint64_t timeOfEvent = unixTimestamp();
 		
 		//evidence Id is valid and in a CHECKEDIN state, make checkout entry
 		//Capture timestamp and store
@@ -602,6 +641,17 @@ void checkoutItem( string inItemId, int checkoutPassword )
 		string nextBlock = blockToString( "" );
 		//append new block to end
 		writeToFile( nextBlock );
+		
+		//event completed successfully, perform stdout operations
+		string tmpCaseId = "";
+		unsigned char tmpCaseIdBytes[BLOCK_CASE_ID_SIZE];
+		memcpy(&tmpCaseIdBytes[0], &blockCaseID[0], BLOCK_CASE_ID_SIZE);
+		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE );
+		tmpCaseId.append((const char*)&tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE);
+		printf("Case: %s\n", tmpCaseId.c_str());
+		printf("Checked out item: %s\n", inItemId.c_str());
+		printf("Status: CHECKEDOUT\n");
+		printf("Time of Action: %s\n", translateTimestamp(timeOfEvent).c_str() );
 	}
 	else
 	{
@@ -628,9 +678,8 @@ void checkinItem( string inItemId, int checkoutPassword )
 	//operation only permitted if evidence is CHECKEDOUT
 	if( CHECKEDOUT == evidenceState)
 	{
-		printf("Evidence can be Checked In\n");
 		//get the time the evidence was checked in
-		double timeOfEvent = time(nullptr);
+		uint64_t timeOfEvent = unixTimestamp();
 		
 		//evidence Id is valid and in a CHECKEDOUT state, make checkin entry
 		//Capture timestamp and store
@@ -662,6 +711,17 @@ void checkinItem( string inItemId, int checkoutPassword )
 		string nextBlock = blockToString( "" );
 		//append new block to end
 		writeToFile( nextBlock );
+		
+		//event completed successfully, perform stdout operations
+		string tmpCaseId = "";
+		unsigned char tmpCaseIdBytes[BLOCK_CASE_ID_SIZE];
+		memcpy(&tmpCaseIdBytes[0], &blockCaseID[0], BLOCK_CASE_ID_SIZE);
+		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE );
+		tmpCaseId.append((const char*)&tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE);
+		printf("Case: %s\n", tmpCaseId.c_str());
+		printf("Checked out item: %s\n", inItemId.c_str());
+		printf("Status: CHECKEDIN\n");
+		printf("Time of Action: %s\n", translateTimestamp(timeOfEvent).c_str() );
 	}
 	else
 	{
@@ -688,9 +748,8 @@ void removeItem( string inItemId, int removalType, string removalReason )
 	//operation only permitted if evidence is CHECKEDIN
 	if( CHECKEDIN == evidenceState)
 	{
-		printf("Evidence can be Removed\n");
 		//get the time the evidence was removed
-		double timeOfEvent = time(nullptr);
+		uint64_t timeOfEvent = unixTimestamp();
 		
 		//evidence Id is valid and in a CHECKEDIN state, make removal entry
 		//Capture timestamp and store
@@ -729,6 +788,17 @@ void removeItem( string inItemId, int removalType, string removalReason )
 		}
 		//append new block to end
 		writeToFile( nextBlock );
+		
+		//event completed successfully, perform stdout operations
+		string tmpCaseId = "";
+		unsigned char tmpCaseIdBytes[BLOCK_CASE_ID_SIZE];
+		memcpy(&tmpCaseIdBytes[0], &blockCaseID[0], BLOCK_CASE_ID_SIZE);
+		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE );
+		tmpCaseId.append((const char*)&tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE);
+		printf("Case: %s\n", tmpCaseId.c_str() );
+		printf("Checked out item: %s\n", inItemId.c_str() );
+		printf("Status: %s\n", removalState.c_str() );
+		printf("Time of Action: %s\n", translateTimestamp(timeOfEvent).c_str() );
 	}
 	else
 	{
@@ -820,15 +890,12 @@ void showCases()
 	}
 	
 	//print all found cases
-	char* casePtr = new char[BLOCK_CASE_ID_SIZE];
 	for( int i = 0; i < caseIdList.size(); i++ )
 	{
 		//decrypt the data for human readable output
-		strcpy( casePtr, caseIdList[i].c_str() );
-		decryptBytes( (unsigned char*)casePtr, BLOCK_CASE_ID_SIZE );
-		printf("Case: %s\n", casePtr );
+		decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+		printf("Case: %s\n", caseIdList[i].c_str() );
 	}
-	delete casePtr;
 }
 
 /**
@@ -936,22 +1003,220 @@ void showItems( string inCaseId )
 	}
 	
 	//print all found cases
-	char* itemPtr = new char[BLOCK_ITEM_ID_SIZE];
 	for( int i = 0; i < itemIdList.size(); i++ )
 	{
 		//decrypt the data for human readable output
-		strcpy( itemPtr, itemIdList[i].c_str() );
-		decryptBytes( (unsigned char*)itemPtr, BLOCK_ITEM_ID_SIZE );
-		printf("Item: %s\n", itemPtr );
+		decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+		printf("Item: %s\n", itemIdList[i].c_str() );
 	}
-	delete itemPtr;
 }
 
 /**
  * @dev 
  */
-void showHistory()
+void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse )
 {
+	//track the list of unique items to return
+	vector<string> caseIdList;
+	vector<string> itemIdList;
+	vector<string> stateList;
+	vector<uint64_t> timeList;
+	//store the original strings for a simply empty compare later
+	string origCaseId = inCaseId;
+	string origItemId = inItemId;
+	//translate inputs to a full length string for proper comparisons
+	//This is because when reading from the byte array the string will always
+	//be of length 32 (even if it is only "1234"). We need to translate the
+	//input to be length 32 otherwise comparison will flag false by string
+	//length even if its contents are matching
+	unsigned char tmpCaseId[BLOCK_CASE_ID_SIZE];
+	memset( &tmpCaseId[0], 0, BLOCK_CASE_ID_SIZE );
+	memcpy( &tmpCaseId[0], inCaseId.c_str(), inCaseId.size() );
+	//then we need to encrypt the bytes to match the blockchain sotrage
+	encryptBytes( &tmpCaseId[0], BLOCK_CASE_ID_SIZE );
+	inCaseId = "";
+	inCaseId.append((const char*)&tmpCaseId[0], BLOCK_CASE_ID_SIZE);
+	//repeat process for Item ID
+	unsigned char tmpItemId[BLOCK_ITEM_ID_SIZE];
+	memset( &tmpItemId[0], 0, BLOCK_ITEM_ID_SIZE );
+	memcpy( &tmpItemId[0], inItemId.c_str(), inItemId.size() );
+	//then we need to encrypt the bytes to match the blockchain sotrage
+	encryptBytes( &tmpItemId[0], BLOCK_ITEM_ID_SIZE );
+	inItemId = "";
+	inItemId.append((const char*)&tmpItemId[0], BLOCK_ITEM_ID_SIZE);	
+	
+	//confirm the file exists before attempting to read it
+	if( fileExists() )
+	{
+		//store the reads of data
+		unsigned char readCaseId[BLOCK_CASE_ID_SIZE];
+		unsigned char readItemId[BLOCK_ITEM_ID_SIZE];
+		unsigned char readState[BLOCK_STATE_SIZE];
+		union
+		{
+			uint64_t dblTime;
+			unsigned char byteTime[BLOCK_TIMESTAMP_SIZE];
+		} readTimestamp;
+		union
+		{
+			unsigned int intLen;
+			unsigned char byteLen[4];
+		} readDataLen;
+		
+		//get the current contents of the blockchain
+		FILE* fPtr;
+		fPtr = fopen( COC_FILE.c_str(), "rb" );
+		fseek( fPtr, 0, SEEK_SET );
+		//store the end of the file location
+		FILE* endPtr;
+		endPtr = fopen( COC_FILE.c_str(), "rb" );
+		fseek( endPtr, 0, SEEK_END );
+		
+		//get the state of the first block (SEEK_SET = start of file)
+		fseek( fPtr, BLOCK_DATA_LEN_OFFSET, SEEK_SET );
+		//Compute the offset to read the length of this data field
+		fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
+		//advance from the DataLen field to the end of the data field
+		//(recall the "fread" advances the fPtr)
+		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
+		//read the hash of this block before advancing to the next
+		//and store it in the Previous Hash global variable
+		fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
+		//we need to sequentially check every block to determine the latest
+		//state of this evidence item
+		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
+		{
+			//notice, this method does no verification of blockchain integrity
+			//offset computational support
+			int offsetToNextField = 0;
+			string tmpCase = "";
+			string tmpItem = "";
+			string tmpState = "";
+			uint64_t tmpTime = 0;
+			
+			//advance from the head of the block to the timestamp field
+			offsetToNextField = BLOCK_TIMESTAMP_OFFSET;
+			fseek( fPtr, offsetToNextField, SEEK_CUR );
+			fread( readTimestamp.byteTime, sizeof(char), BLOCK_TIMESTAMP_SIZE, fPtr);
+			//save the timestamp to a uint64_t
+			tmpTime = readTimestamp.dblTime;
+			
+			//advance from the end of the timestamp to the case id
+			offsetToNextField = BLOCK_CASE_ID_OFFSET - (BLOCK_TIMESTAMP_OFFSET + BLOCK_TIMESTAMP_SIZE);
+			fseek( fPtr, offsetToNextField, SEEK_CUR );
+			fread( readCaseId, sizeof(char), BLOCK_CASE_ID_SIZE, fPtr);
+			//convert the caseId bytes to a string
+			tmpCase.append((const char*)&readCaseId[0], BLOCK_CASE_ID_SIZE);
+			
+			//advance from the Case ID to the Item ID field
+			offsetToNextField = BLOCK_ITEM_ID_OFFSET - (BLOCK_CASE_ID_OFFSET + BLOCK_CASE_ID_SIZE);
+			fseek( fPtr, offsetToNextField, SEEK_CUR );
+			fread( readItemId, sizeof(char), BLOCK_ITEM_ID_SIZE, fPtr);
+			//convert the caseId bytes to a string
+			tmpItem.append((const char*)&readItemId[0], BLOCK_ITEM_ID_SIZE);
+			
+			//check to see if it should be appended to the list of matches
+			//by comparing it to the Case ID & Item ID filter (guaranteed
+			//add to list if both are "")
+			bool addToList = true;
+			if( 0 != origCaseId.compare("") )
+			{
+				//if the current case & filter case do not
+				//match, then do not add to the list
+				if(0 != tmpCase.compare(inCaseId))
+				{
+					addToList = false;
+				}
+			}
+			if( 0 != origItemId.compare("") )
+			{
+				//if the current item & filter item do not
+				//match, then do not add to the list
+				if(0 != tmpItem.compare(inItemId))
+				{
+					addToList = false;
+				}
+			}
+			//we will add to the list later, we don't have the state & time yet
+			//itemIdList.push_back(tmpItem);
+			
+			//advance from the end of the Item Id to the State
+			offsetToNextField = BLOCK_STATE_OFFSET - (BLOCK_ITEM_ID_OFFSET + BLOCK_ITEM_ID_SIZE);
+			fseek( fPtr, offsetToNextField, SEEK_CUR );
+			fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr );
+			//convert the caseId bytes to a string
+			tmpState.append((const char*)&readState[0], BLOCK_STATE_SIZE);
+			
+			//add the captured data from the block chain to the history list to show
+			if( addToList )
+			{
+				caseIdList.push_back( tmpCase );
+				itemIdList.push_back( tmpItem );
+				stateList.push_back( tmpState );
+				timeList.push_back( tmpTime );
+			}
+			
+			//advance from the end of the State to the Data Length field
+			offsetToNextField = BLOCK_DATA_LEN_OFFSET - (BLOCK_STATE_OFFSET + BLOCK_STATE_SIZE);
+			fseek( fPtr, offsetToNextField, SEEK_CUR );
+			//Compute the offset to read the length of this data field
+			fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
+			//advance from the DataLen field to the end of the data field
+			//(recall the "fread" advances the fPtr)
+			fseek( fPtr, readDataLen.intLen, SEEK_CUR );
+			//read the hash of this block before advancing to the next
+			//and store it in the Previous Hash global variable
+			fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
+		}
+		fclose(fPtr);
+	}
+	
+	//print all found cases
+	//If -1 entries specified, show all of them. Also prevent out of bounds access.
+	if( (-1 == numEntries) || (numEntries > itemIdList.size()) )
+	{
+		numEntries = itemIdList.size();
+	}
+	//If "reverse" is true, print latest to oldest order
+	if( reverse )
+	{
+		int bottom = itemIdList.size() - numEntries;
+		if( bottom < 0 )
+		{
+			bottom = 0;
+		}
+		for( int i = itemIdList.size()-1; i >= bottom; i-- )
+		{
+			//decrypt the case id for human readable output
+			decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+			printf("Case: %s\n", caseIdList[i].c_str() );
+			//decrypt the item id for human readable output
+			decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+			printf("Item: %s\n", itemIdList[i].c_str() );
+			//State is not encrypted, print as is
+			printf("ACTION: %s\n", stateList[i].c_str() );
+			//Time is a double of microseconds since Epoch, translate to human readable
+			printf("Time: %s\n", translateTimestamp( timeList[i] ).c_str() );
+			printf("\n");
+		}
+	}
+	else
+	{
+		for( int i = 0; i < numEntries; i++ )
+		{
+			//decrypt the case id for human readable output
+			decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+			printf("Case: %s\n", caseIdList[i].c_str() );
+			//decrypt the item id for human readable output
+			decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+			printf("Item: %s\n", itemIdList[i].c_str() );
+			//State is not encrypted, print as is
+			printf("ACTION: %s\n", stateList[i].c_str() );
+			//Time is a double of microseconds since Epoch, translate to human readable
+			printf("Time: %s\n", translateTimestamp( timeList[i] ).c_str() );
+			printf("\n");
+		}
+	}
 	
 }
 
@@ -1061,6 +1326,8 @@ void verify()
  */
 int main( int argc, char* argv[] )
 {
+	//method result
+	int mainResult = 0;
 	//Get the command from the command line
 	string inputCommand;
 	
@@ -1101,7 +1368,7 @@ int main( int argc, char* argv[] )
 					//do not exceed 32char length
 					if( cmdCaseId.size() > 32 )
 					{
-						cmdCaseId = cmdCaseId.substr(0, 12);
+						cmdCaseId = cmdCaseId.substr(0, 32);
 					}
 				}
 			}
@@ -1124,11 +1391,6 @@ int main( int argc, char* argv[] )
 				if( 0 == strcmp("-p", argv[arg]) )
 				{
 					cmdPassword = argv[arg+1];
-					//do not exceed 4char length
-					if( cmdPassword.size() > 4 )
-					{
-						cmdPassword = cmdPassword.substr(0, 4);
-					}
 				}
 			}
 			
@@ -1154,7 +1416,30 @@ int main( int argc, char* argv[] )
 							addItemToCase( cmdCaseId, cmdItemId, cmdCreator );
 						}
 					}
+					if( 0 == cmdItemId.compare("") )
+					{
+						printf("No Item ID provided\n");
+						mainResult = 1;
+					}
 				}
+				else
+				{
+					if( 0 == cmdCaseId.compare("") )
+					{
+						printf("No Case ID provided\n");
+						mainResult = 1;
+					}
+					if( 0 == cmdCreator.compare("") )
+					{
+						printf("No Creator provided\n");
+						mainResult = 1;
+					}
+				}
+			}
+			else
+			{
+				printf("Invalid Password\n");
+				mainResult = 1;
 			}
 		}
 		else if( 0 == inputCommand.compare("checkout") )
@@ -1172,11 +1457,6 @@ int main( int argc, char* argv[] )
 				if( 0 == strcmp("-p", argv[arg]) )
 				{
 					cmdPassword = argv[arg+1];
-					//do not exceed 4char length
-					if( cmdPassword.size() > 4 )
-					{
-						cmdPassword = cmdPassword.substr(0, 4);
-					}
 				}
 			}
 			//Confirm Password is POLICE, LAWYER, ANALYST, or EXECUTIVE
@@ -1197,6 +1477,16 @@ int main( int argc, char* argv[] )
 						checkoutItem( cmdItemId, passwordId );
 					}
 				}
+				if( 0 == cmdItemId.compare("") )
+				{
+					printf("No Item ID provided\n");
+					mainResult = 1;
+				}
+			}
+			else
+			{
+				printf("Invalid Password\n");
+				mainResult = 1;
 			}
 		}
 		else if( 0 == inputCommand.compare("checkin") )
@@ -1214,11 +1504,6 @@ int main( int argc, char* argv[] )
 				if( 0 == strcmp("-p", argv[arg]) )
 				{
 					cmdPassword = argv[arg+1];
-					//do not exceed 4char length
-					if( cmdPassword.size() > 4 )
-					{
-						cmdPassword = cmdPassword.substr(0, 4);
-					}
 				}
 			}
 			//Confirm Password is POLICE, LAWYER, ANALYST, or EXECUTIVE
@@ -1239,6 +1524,16 @@ int main( int argc, char* argv[] )
 						checkinItem( cmdItemId, passwordId );
 					}
 				}
+				if( 0 == cmdItemId.compare("") )
+				{
+					printf("No Item ID provided\n");
+					mainResult = 1;
+				}
+			}
+			else
+			{
+				printf("Invalid Password\n");
+				mainResult = 1;
 			}
 		}
 		else if( 0 == inputCommand.compare("remove") )
@@ -1306,11 +1601,6 @@ int main( int argc, char* argv[] )
 				if( 0 == strcmp("-p", argv[arg]) )
 				{
 					cmdPassword = argv[arg+1];
-					//do not exceed 4char length
-					if( cmdPassword.size() > 4 )
-					{
-						cmdPassword = cmdPassword.substr(0, 4);
-					}
 				}
 			}
 			
@@ -1330,6 +1620,7 @@ int main( int argc, char* argv[] )
 						else
 						{
 							printf("Attempted to RELEASE evidence without Reason\n");
+							mainResult = 1;
 						}
 					}
 					//the other 2 can have it filled out optionally
@@ -1341,7 +1632,22 @@ int main( int argc, char* argv[] )
 					{
 						removeItem( cmdItemId, 2, cmdReason );
 					}
+					else
+					{
+						printf("Uknown Removal command\n");
+						mainResult = 1;
+					}
 				}
+				if( 0 == cmdItemId.compare("") )
+				{
+					printf("No Item ID provided\n");
+					mainResult = 1;
+				}
+			}
+			else
+			{
+				printf("Invalid Password\n");
+				mainResult = 1;
 			}
 		}
 		else if( 0 == inputCommand.compare("show") )
@@ -1376,13 +1682,87 @@ int main( int argc, char* argv[] )
 							showItems( cmdCaseId );
 						}
 					}
+					if( 0 == cmdCaseId.compare("") )
+					{
+						printf("No Case ID provided\n");
+						mainResult = 1;
+					}
 				}
 				else if( 0 == inputCommand.compare("history") )
 				{
 					/*
 					 * ==== SHOW HISTORY OPERATION ====
 					 */
-					showHistory();
+					//forward declare needed variables
+					string cmdCaseId = ""; //optional
+					string cmdItemId = ""; //optional
+					string cmdPassword = ""; //NOT optional
+					int numEntry = -1; //optional
+					bool reverse = false; //optional
+					
+					//Find the Case
+					for( int arg = 0; arg < argc; arg++ )
+					{
+						if( 0 == strcmp("-c", argv[arg]) )
+						{
+							cmdCaseId = argv[arg+1];
+							//do not exceed 32char length
+							if( cmdItemId.size() > 32 )
+							{
+								cmdItemId = cmdItemId.substr(0, 32);
+							}
+						}
+					}
+					//Find the Item
+					for( int arg = 0; arg < argc; arg++ )
+					{
+						if( 0 == strcmp("-i", argv[arg]) )
+						{
+							cmdItemId = argv[arg+1];
+							//do not exceed 32char length
+							if( cmdItemId.size() > 32 )
+							{
+								cmdItemId = cmdItemId.substr(0, 32);
+							}
+						}
+					}
+					//Find the Password
+					for( int arg = 0; arg < argc; arg++ )
+					{
+						if( 0 == strcmp("-p", argv[arg]) )
+						{
+							cmdPassword = argv[arg+1];
+						}
+					}
+					//Find the Number of Entries to print
+					for( int arg = 0; arg < argc; arg++ )
+					{
+						if( 0 == strcmp("-n", argv[arg]) )
+						{
+							numEntry = stoi(argv[arg+1]);
+						}
+					}
+					//Find the Reverse Flag
+					for( int arg = 0; arg < argc; arg++ )
+					{
+						if( 0 == strcmp("-r", argv[arg]) )
+						{
+							reverse = true;
+						}
+					}
+					
+					
+					//Confirm Password is POLICE, LAWYER, ANALYST, or EXECUTIVE
+					int passwordId = checkPassword( cmdPassword );
+					if( 0 < passwordId )
+					{
+						showHistory( cmdCaseId, cmdItemId, numEntry, reverse );
+					}
+					else
+					{
+						printf("Invalid Password\n");
+						mainResult = 1;
+					}
 				}
 			}
 		}
@@ -1417,6 +1797,6 @@ int main( int argc, char* argv[] )
 		}
 	}
 	
-	//exit with success
-	return 0;
+	//exit accordingly
+	return mainResult;
 }
