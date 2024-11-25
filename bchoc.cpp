@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <sstream>
 #include <vector>
+#include <ctime>
 //library supporting hashes
 #include <openssl/md5.h>
 #include <openssl/sha.h>
@@ -31,13 +32,17 @@ const int BLOCK_DATA_LEN_SIZE = 4;
 
 //define the fields of the Block
 unsigned char blockPrevHash[BLOCK_PREV_HASH_SIZE];
-unsigned char blockTimestamp[BLOCK_TIMESTAMP_SIZE];
 unsigned char blockCaseID[BLOCK_CASE_ID_SIZE];
 unsigned char blockItemID[BLOCK_ITEM_ID_SIZE];
 unsigned char blockState[BLOCK_STATE_SIZE];
 unsigned char blockCreator[BLOCK_CREATOR_SIZE];
 unsigned char blockOwner[BLOCK_OWNER_SIZE];
 //make a union to simplify data access in memory
+union
+{
+	double dblTime;
+	unsigned char byteTime[BLOCK_TIMESTAMP_SIZE];
+} blockTimestamp;
 union
 {
 	unsigned int  intLen;
@@ -227,7 +232,7 @@ void resetBlockBytes()
 {
 	//Initialize the fields
 	memset( &blockPrevHash[0], 0, BLOCK_PREV_HASH_SIZE);
-	memset( &blockTimestamp[0], 0, BLOCK_TIMESTAMP_SIZE);
+	memset( &blockTimestamp.byteTime[0], 0, BLOCK_TIMESTAMP_SIZE);
 	memset( &blockCaseID[0], 0, BLOCK_CASE_ID_SIZE);
 	memset( &blockItemID[0], 0, BLOCK_ITEM_ID_SIZE);
 	for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
@@ -253,7 +258,7 @@ string blockToString( string dataField )
 	string completeBlock = "";
 	//append the sections in order
 	completeBlock.append((const char*)&blockPrevHash[0], BLOCK_PREV_HASH_SIZE);
-	completeBlock.append((const char*)&blockTimestamp[0], BLOCK_TIMESTAMP_SIZE);
+	completeBlock.append((const char*)&blockTimestamp.byteTime[0], BLOCK_TIMESTAMP_SIZE);
 	completeBlock.append((const char*)&blockCaseID[0], BLOCK_CASE_ID_SIZE);
 	completeBlock.append((const char*)&blockItemID[0], BLOCK_ITEM_ID_SIZE);
 	completeBlock.append((const char*)&blockState[0], BLOCK_STATE_SIZE);
@@ -462,6 +467,41 @@ int checkPassword( string cmpPassword )
 /**
  * @dev 
  */
+void init()
+{
+	bool prevInit = cocIsInit();
+	if( prevInit )
+	{
+		//INITIAL block exists, do not create another
+		printf("Blockchain file found with INITIAL block\n");
+	}
+	else
+	{
+		//Confirm we reached here because no blockchain file
+		//exists, and not because the file has a first block that
+		//is something other than INITIAL
+		if( !(fileExists()) )
+		{
+			//INITIAL block does not exist, create one
+			printf("Blockchain file not found. Created INITIAL block\n");
+			//Initialize the fields (reset 0s everything as deired)
+			resetBlockBytes();
+			//set specific fields
+			string setValue = "INITIAL";
+			memcpy( &blockState[0], setValue.c_str(), setValue.size() );
+			setValue = "Initial block";
+			blockDataLen.intLen = setValue.size();
+			//create the INITAL block and append it
+			string initialBlock = blockToString( setValue );
+			writeToFile( initialBlock );
+		}
+		//else we have a block chain without an INITIAL block
+	}
+}
+ 
+/**
+ * @dev 
+ */
 void addItemToCase( string inCaseId, string inItemId, string inCreator )
 {
 	//before attempting to add a block,
@@ -478,10 +518,12 @@ void addItemToCase( string inCaseId, string inItemId, string inCreator )
 	if( -1 == evidenceState)
 	{
 		printf("This is new evidence\n");
+		//get the time the evidence was added
+		double timeOfEvent = time(nullptr);
 		
 		//evidence ID is unique and should be added
-		//(TODO) Capture timestamp and store
-		
+		//Capture timestamp and store
+		blockTimestamp.dblTime = timeOfEvent;
 		//copy Case Id (then encrypt the bytes)
 		memcpy( &blockCaseID[0], inCaseId.c_str(), inCaseId.size() );
 		encryptBytes( &blockCaseID[0], BLOCK_CASE_ID_SIZE );
@@ -527,10 +569,12 @@ void checkoutItem( string inItemId, int checkoutPassword )
 	if( CHECKEDIN == evidenceState)
 	{
 		printf("Evidence can be Checked Out\n");
+		//get the time the evidence was checked out
+		double timeOfEvent = time(nullptr);
 		
 		//evidence Id is valid and in a CHECKEDIN state, make checkout entry
-		//(TODO) Capture timestamp and store
-		
+		//Capture timestamp and store
+		blockTimestamp.dblTime = timeOfEvent;
 		//--getEvidenceState() has already stored the Case Id in the blockCaseId after finding a matching Item ID
 		//Copy the Item ID (already encrypted)
 		memcpy( &blockItemID[0], &itemID[0], BLOCK_ITEM_ID_SIZE );
@@ -585,10 +629,12 @@ void checkinItem( string inItemId, int checkoutPassword )
 	if( CHECKEDOUT == evidenceState)
 	{
 		printf("Evidence can be Checked In\n");
+		//get the time the evidence was checked in
+		double timeOfEvent = time(nullptr);
 		
 		//evidence Id is valid and in a CHECKEDOUT state, make checkin entry
-		//(TODO) Capture timestamp and store
-		
+		//Capture timestamp and store
+		blockTimestamp.dblTime = timeOfEvent;
 		//--getEvidenceState() has already stored the Case Id in the blockCaseId after finding a matching Item ID
 		//Copy the Item ID (already encrypted)
 		memcpy( &blockItemID[0], &itemID[0], BLOCK_ITEM_ID_SIZE );
@@ -643,10 +689,12 @@ void removeItem( string inItemId, int removalType, string removalReason )
 	if( CHECKEDIN == evidenceState)
 	{
 		printf("Evidence can be Removed\n");
+		//get the time the evidence was removed
+		double timeOfEvent = time(nullptr);
 		
 		//evidence Id is valid and in a CHECKEDIN state, make removal entry
-		//(TODO) Capture timestamp and store
-		
+		//Capture timestamp and store
+		blockTimestamp.dblTime = timeOfEvent;
 		//--getEvidenceState() has already stored the Case Id in the blockCaseId after finding a matching Item ID
 		//Copy the Item ID
 		memcpy( &blockItemID[0], &itemID[0], BLOCK_ITEM_ID_SIZE );
@@ -910,41 +958,6 @@ void showHistory()
 /**
  * @dev 
  */
-void init()
-{
-	bool prevInit = cocIsInit();
-	if( prevInit )
-	{
-		//INITIAL block exists, do not create another
-		printf("Blockchain file found with INITIAL block\n");
-	}
-	else
-	{
-		//Confirm we reached here because no blockchain file
-		//exists, and not because the file has a first block that
-		//is something other than INITIAL
-		if( !(fileExists()) )
-		{
-			//INITIAL block does not exist, create one
-			printf("Blockchain file not found. Created INITIAL block\n");
-			//Initialize the fields (reset 0s everything as deired)
-			resetBlockBytes();
-			//set specific fields
-			string setValue = "INITIAL";
-			memcpy( &blockState[0], setValue.c_str(), setValue.size() );
-			setValue = "Initial block";
-			blockDataLen.intLen = setValue.size();
-			//create the INITAL block and append it
-			string initialBlock = blockToString( setValue );
-			writeToFile( initialBlock );
-		}
-		//else we have a block chain without an INITIAL block
-	}
-}
-
-/**
- * @dev 
- */
 void verify()
 {
 	bool allGood = false;
@@ -1067,7 +1080,6 @@ int main( int argc, char* argv[] )
 	if( argc > 1 )
 	{
 		inputCommand = argv[1];
-		printf("Input: %s\n", inputCommand.c_str() );
 		//determine what the first (case sensitive) command word on the CLI is
 		if( 0 == inputCommand.compare("add") )
 		{
