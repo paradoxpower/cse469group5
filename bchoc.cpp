@@ -55,7 +55,7 @@ union
 unsigned char blockCurHash[BLOCK_PREV_HASH_SIZE];
 
 //define constants for this effort (all of the following are in bytes)
-const string COC_FILE = "CoC.txt";
+const string COC_FILE = "CoC.bin";
 //Size & offset constants for each block (before variable data field)
 /*
 	Data Layout
@@ -98,7 +98,7 @@ const char* AES_KEY = "R0chLi4uLi4uLi4=";
  */
 
  /**
- * @dev 
+ * @dev Simple method that will check a files existence
  */
 bool fileExists()
 {
@@ -196,6 +196,7 @@ uint64_t unixTimestamp()
 
 /**
  * @dev Translate an Epoch into formatted time string
+ * @param Count of microseconds since Epoch to format
  */
 string translateTimestamp( uint64_t inTime )
 {
@@ -220,7 +221,7 @@ string translateTimestamp( uint64_t inTime )
 }
 
 /**
- * @dev 
+ * @dev Method to check if the blockchain is initialized
  */
 bool cocIsInit()
 {
@@ -262,7 +263,7 @@ bool cocIsInit()
 }
 
 /**
- * @dev 
+ * @dev Support method to clear any unexpected data from the block info
  */
 void resetBlockBytes()
 {
@@ -287,7 +288,8 @@ void resetBlockBytes()
 }
 
 /**
- * @dev 
+ * @dev This method takes all the block info and converts into a block that gets it's
+ *		hash computed before adding it the end of the blockchain
  */
 string blockToString( string dataField )
 {
@@ -311,7 +313,8 @@ string blockToString( string dataField )
 }
 
 /**
- * @dev 
+ * @dev This method iterates the blockchain for a given evidence item and returns it latest state
+ * @param The item name to search for
  */
 int getEvidenceState( unsigned char* itemToCheck )
 {
@@ -466,7 +469,9 @@ int getEvidenceState( unsigned char* itemToCheck )
 }
 
 /**
- * @dev 
+ * @dev This method compares a password against known allowable passwords and
+ *		returns a number reflecting who's password it belongs to
+ * @param The password to check
  */
 int checkPassword( string cmpPassword )
 {
@@ -501,7 +506,7 @@ int checkPassword( string cmpPassword )
  */
 
 /**
- * @dev 
+ * @dev Method to create an INITIAL block if none exists
  */
 void init()
 {
@@ -536,7 +541,10 @@ void init()
 }
  
 /**
- * @dev 
+ * @dev Mthod to add a new evidence item t othe blockchain
+ * @param The case to associate to the item
+ * @param The item to attempt to add
+ * @param The Creator name to asosciate to the item
  */
 void addItemToCase( string inCaseId, string inItemId, string inCreator )
 {
@@ -590,7 +598,9 @@ void addItemToCase( string inCaseId, string inItemId, string inCreator )
 }
 
 /**
- * @dev 
+ * @dev This method will attempt to checkout an item if it is in the checkedin state
+ * @param The item id to attempt to checkout
+ * @param The password will set the owner based on the password used to complete the action
  */
 void checkoutItem( string inItemId, int checkoutPassword )
 {
@@ -660,7 +670,9 @@ void checkoutItem( string inItemId, int checkoutPassword )
 }
 
 /**
- * @dev 
+ * @dev This item looks for an item, and if it is checked out then it will make a checkin block
+ * @param The item to attempt to checkin
+ * @param The password used to complete the action will set the Owner field to POLICE/LAWYER/ANALYST/EXECUTIVE
  */
 void checkinItem( string inItemId, int checkoutPassword )
 {
@@ -730,7 +742,10 @@ void checkinItem( string inItemId, int checkoutPassword )
 }
 
 /**
- * @dev 
+ * @dev This method "removes" an evidence item from the Chain of Custody by updating its state
+ * @param inItemId specifies which item to remove
+ * @param removalType is the state change to DESTROYED/DISPOSED/RELEASED
+ * @param removalReason is the string to put in the data field for the event (optional for all but RELEASED)
  */
 void removeItem( string inItemId, int removalType, string removalReason )
 {
@@ -807,7 +822,7 @@ void removeItem( string inItemId, int removalType, string removalReason )
 }
 
 /**
- * @dev 
+ * @dev Method that shows all unique cases in the blockchain
  */
 void showCases()
 {
@@ -899,7 +914,8 @@ void showCases()
 }
 
 /**
- * @dev 
+ * @dev This method prints all Evidence items associated to the specified case
+ * @param the case to find all items for
  */
 void showItems( string inCaseId )
 {
@@ -1012,7 +1028,11 @@ void showItems( string inCaseId )
 }
 
 /**
- * @dev 
+ * @dev Show's the individual blocks in the blockchain
+ * @param inCaseId is an argument to filter the history by a specific Case ("" applies no filter)
+ * @param inItemId is an argument to filter the history by a specific item ("" applies no filter)
+ * @param numEntries defines how many entries to print (-1 prints all)
+ * @param By default it prints oldest to newest, but reverse=true prints newest to oldest
  */
 void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse )
 {
@@ -1138,7 +1158,6 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 				}
 			}
 			//we will add to the list later, we don't have the state & time yet
-			//itemIdList.push_back(tmpItem);
 			
 			//advance from the end of the Item Id to the State
 			offsetToNextField = BLOCK_STATE_OFFSET - (BLOCK_ITEM_ID_OFFSET + BLOCK_ITEM_ID_SIZE);
@@ -1221,28 +1240,59 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 }
 
 /**
- * @dev 
+ * @dev Verify method that will check the blockchain for a set of potential errors
  */
 void verify()
 {
-	bool allGood = false;
+	bool allGood = true;
 	int transCount = 0;
+	//create dynamic lists to track linkage of case/item/states/creator
+	vector<string> monitoredCaseId;
+	vector<string> monitoredItemId;
+	vector<string> monitoredState;
+	vector<string> monitoredCreator;
 	//track the Hash of the bad block and the reason it is bad
 	vector<string> badBlocks;
-	vector<string> findingInfo;
+	vector<int> failureCondition;
 	//confirm the file exists before attempting to read it
 	if( fileExists() )
 	{
-		//a file does exist to verify
-		allGood = true;
-		//store the reads of data
+		//store the reads of data (Dat field will be allocated for each block)
 		unsigned char readPrevHash[BLOCK_PREV_HASH_SIZE];
-		unsigned int sizeOfBlock = 0;
+		unsigned char readCaseId[BLOCK_CASE_ID_SIZE];
+		unsigned char readItemId[BLOCK_ITEM_ID_SIZE];
+		unsigned char readState[BLOCK_STATE_SIZE];
+		unsigned char readCreator[BLOCK_CREATOR_SIZE];
+		unsigned char readOwner[BLOCK_OWNER_SIZE];
+		union
+		{
+			uint64_t dblTime;
+			unsigned char byteTime[BLOCK_TIMESTAMP_SIZE];
+		} readTimestamp;
 		union
 		{
 			unsigned int intLen;
 			unsigned char byteLen[4];
 		} readDataLen;
+		unsigned char readCurHash[BLOCK_PREV_HASH_SIZE];
+		
+		//additional variables to assist with verification
+		uint64_t lastBlockTime = 0;
+		unsigned char tmpCI[] = {'C','H','E','C','K','E','D','I','N','\0','\0','\0'};
+		string checkinState = "";
+		checkinState.append((const char*)&tmpCI[0], BLOCK_STATE_SIZE);
+		unsigned char tmpCO[] = {'C','H','E','C','K','E','D','O','U','T','\0','\0'};
+		string checkoutState = "";
+		checkoutState.append((const char*)&tmpCO[0], BLOCK_STATE_SIZE);
+		unsigned char tmpDE[] = {'D','E','S','T','R','O','Y','E','D','\0','\0','\0'};
+		string destroyedState = "";
+		destroyedState.append((const char*)&tmpDE[0], BLOCK_STATE_SIZE);
+		unsigned char tmpDI[] = {'D','I','S','P','O','S','E','D','\0','\0','\0','\0'};
+		string disposedState = "";
+		disposedState.append((const char*)&tmpDI[0], BLOCK_STATE_SIZE);
+		unsigned char tmpRE[] = {'R','E','L','E','A','S','E','D','\0','\0','\0','\0'};
+		string releasedState = "";
+		releasedState.append((const char*)&tmpRE[0], BLOCK_STATE_SIZE);
 		
 		//get the current contents of the blockchain
 		FILE* fPtr;
@@ -1262,48 +1312,250 @@ void verify()
 		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
 		//read the hash of this block before advancing to the next
 		//and store it in the Previous Hash global variable
-		fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
-		transCount++; //increment after reading a hash
+		fread( readCurHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
+		//after reading the hash, increment transaction counter
+		transCount++;
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
 		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
 		{
-			//check hash on last block matches logged prevHash in current block
-			fread( readPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
-			bool hashMatch = true;
-			if( 0 != memcmp(&blockPrevHash[0], &readPrevHash[0], BLOCK_PREV_HASH_SIZE) )
+			//notice, this method does no verification of blockchain integrity
+			//offset computational support
+			int offsetToNextField = 0;
+			string tmpCase = "";
+			string tmpItem = "";
+			string tmpState = "";
+			string tmpCreator = "";
+			uint64_t tmpTime = 0;
+			string tmpData = "";
+			string tmpPrevHash = "";
+			string tmpCurHash = "";
+			
+			//since we are reading all fields, we can read them in order
+			//and leverage that fread will advance the pointer with each read
+			fread( readPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr);
+			fread( readTimestamp.byteTime, sizeof(char), BLOCK_TIMESTAMP_SIZE, fPtr);
+			fread( readCaseId, sizeof(char), BLOCK_CASE_ID_SIZE, fPtr);
+			fread( readItemId, sizeof(char), BLOCK_ITEM_ID_SIZE, fPtr);
+			fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr );
+			fread( readCreator, sizeof(char), BLOCK_CREATOR_SIZE, fPtr );
+			fread( readOwner, sizeof(char), BLOCK_OWNER_SIZE, fPtr );
+			fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
+			
+			//Then we translate the data fields we intend to do futher tracking/comparisons
+			//of into other data types instead of raw bytes
+			tmpTime = readTimestamp.dblTime;
+			tmpCase.append((const char*)&readCaseId[0], BLOCK_CASE_ID_SIZE);
+			tmpItem.append((const char*)&readItemId[0], BLOCK_ITEM_ID_SIZE);
+			tmpState.append((const char*)&readState[0], BLOCK_STATE_SIZE);
+			tmpCreator.append((const char*)&readCreator[0], BLOCK_CREATOR_SIZE);
+			
+			//--- First Round of Verification Checks ---
+			//	1) Previous Hash field matches the hash of the parent block
+			//	2) Strictly Increasing Time
+			//	3) Unique Item ID has unchanged Case ID
+			//	4) Unique Item ID has unchanged Creator
+			//	5) Item has appropriate state changes
+			//		(Checkin > Checkout / Checkout > Checkin / Checkin > Removed)
+			
+			//#1
+			bool parentHashMatch = true;
+			for( int i = 0; i < BLOCK_PREV_HASH_SIZE; i++ )
 			{
-				hashMatch = false;
+				//NOTE -- "CurHash" is still ohlding the hash of the previous block
+				//and "PrevHash is the current blocks field storing the parent hash
+				if( readCurHash[i] != readPrevHash[i] )
+				{
+					parentHashMatch = false;
+					allGood = false;
+				}
+			}
+			
+			//#2
+			bool increasingTime = true;
+			if( lastBlockTime > tmpTime )
+			{
+				increasingTime = false;
 				allGood = false;
 			}
+			lastBlockTime = tmpTime;
 			
-			//proceed to next block
-			int offsetToNextField = 0;
-			//advance from the end of the previous hash to the Data Length field
-			offsetToNextField = BLOCK_DATA_LEN_OFFSET - (BLOCK_PREV_HASH_OFFSET + BLOCK_PREV_HASH_SIZE);
-			fseek( fPtr, offsetToNextField, SEEK_CUR );
-			//Compute the offset to read the length of this data field
-			fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
-			//advance from the DataLen field to the end of the data field
-			//(recall the "fread" advances the fPtr)
-			fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-			//read the hash of this block before advancing to the next
-			//and store it in the Previous Hash global variable
-			fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
-			transCount++; //increment after reading a hash
-			
-			//Store the hash of the bad block
-			if( !hashMatch )
+			//#3/4
+			bool unchangedCaseId = true;
+			bool unchangedCreator = true;
+			//check if this item is being tracked yet
+			int itemMonitored = -1;
+			for( int i = 0; i < monitoredItemId.size(); i++ )
 			{
-				//add the block has
-				string bytesToString = "";
-				bytesToString.append((const char*)&blockPrevHash[0], BLOCK_PREV_HASH_SIZE);
-				badBlocks.push_back( bytesToString );
+				if( 0 == tmpItem.compare( monitoredItemId[i] ) )
+				{
+					itemMonitored = i;
+				}
 			}
+			if( -1 != itemMonitored )
+			{
+				//item is on the monitoring block, do verification
+				if( 0 != tmpCase.compare( monitoredCaseId[itemMonitored] ) )
+				{
+					unchangedCaseId = false;
+					allGood = false;
+				}
+				if( 0 != tmpCreator.compare( monitoredCreator[itemMonitored] ) )
+				{
+					unchangedCreator = false;
+					allGood = false;
+				}
+			}
+			else
+			{
+				//first instance of the item, add its values to the list
+				monitoredCaseId.push_back( tmpCase );
+				monitoredItemId.push_back( tmpItem );
+				monitoredCreator.push_back( tmpCreator );
+				monitoredState.push_back( tmpState );
+			}
+			
+			//#5
+			//leverage previous check for item existence in moitoring yet
+			bool validStateChange = false;
+			if( -1 != itemMonitored )
+			{
+				//determine previous state of the item
+				if( 0 == checkinState.compare( monitoredState[itemMonitored] ) )
+				{
+					//previously CHECKEDIN
+					//Allowable next states: CHECKEDOUT, DESTROYED, DISPOSED, RELEASED
+					if( 0 == tmpState.compare( checkoutState ) )
+					{
+						validStateChange = true;
+					}
+					else if( 0 == tmpState.compare( destroyedState ) )
+					{
+						validStateChange = true;
+					}
+					else if( 0 == tmpState.compare( disposedState ) )
+					{
+						validStateChange = true;
+					}
+					else if( 0 == tmpState.compare( releasedState ) )
+					{
+						validStateChange = true;
+					}
+				}
+				else if( 0 == checkoutState.compare( monitoredState[itemMonitored] ) )
+				{
+					//previously CHECKEDOUT
+					//Allowable next states: CHECKEDIN
+					if( 0 == tmpState.compare( checkinState ) )
+					{
+						validStateChange = true;
+					}
+				}
+				else
+				{
+					//previously DESTROYED, DISPOSED, RELEASED
+					//Allowable next states: N/A (any transition is illegal)
+					validStateChange = false;
+				}
+				if( !validStateChange )
+				{
+					//there was an invalid state change
+					allGood = false;
+				}
+				//in all cases, update the monitored state to what was read
+				monitoredState[itemMonitored] = tmpState;
+			}
+			
+			//--- End of First Round Verificatoin ---
+			
+			//now we need to scan whatever data may be in the data field
+			unsigned char readDataField[readDataLen.intLen];
+			if( readDataLen.intLen > 0 )
+			{
+				fread( readDataField, sizeof(char), readDataLen.intLen, fPtr );
+				tmpData.append((const char*)&readDataField[0], readDataLen.intLen);
+			}
+			
+			//read the hash of this block (this will advance the fPtr to
+			//the next block in the chain for when the while loop iterates)
+			fread( readCurHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
+			//after reading the hash, increment transaction counter
+			transCount++;
+			
+			//--- First Round of Verification Checks ---
+			//	6) Recompute the hash of the stored data and compare to the stored hash
+			
+			//#6
+			bool hashesMatch = true;
+			string thisBlock = "";
+			//recreate the block to compute it's hash and compare to the stored hash
+			thisBlock.append((const char*)&readPrevHash[0], BLOCK_PREV_HASH_SIZE);
+			thisBlock.append((const char*)&readTimestamp.byteTime[0], BLOCK_TIMESTAMP_SIZE);
+			thisBlock.append((const char*)&readCaseId[0], BLOCK_CASE_ID_SIZE);
+			thisBlock.append((const char*)&readItemId[0], BLOCK_ITEM_ID_SIZE);
+			thisBlock.append((const char*)&readState[0], BLOCK_STATE_SIZE);
+			thisBlock.append((const char*)&readCreator[0], BLOCK_CREATOR_SIZE);
+			thisBlock.append((const char*)&readOwner[0], BLOCK_OWNER_SIZE);
+			thisBlock.append((const char*)&readDataLen.byteLen[0], BLOCK_DATA_LEN_SIZE);
+			thisBlock.append( tmpData );
+			//compute and append the hash value of this block as a string
+			string recalcHash = computeHash(thisBlock);
+			//get the hash of this Block as a string
+			tmpCurHash.append((const char*)&readCurHash[0], BLOCK_PREV_HASH_SIZE);
+			//compare equivalence
+			if( 0 != recalcHash.compare( tmpCurHash ) )
+			{
+				hashesMatch = false;
+			}
+			
+			//--- End of Second Round Verificatoin ---
+			
+			//Catalog all failures for this Block
+			if( !parentHashMatch )
+			{
+				badBlocks.push_back(tmpCurHash);
+				failureCondition.push_back(1);
+			}
+			if( !increasingTime )
+			{
+				badBlocks.push_back(tmpCurHash);
+				failureCondition.push_back(2);
+			}
+			if( !unchangedCaseId )
+			{
+				badBlocks.push_back(tmpCurHash);
+				failureCondition.push_back(3);
+			}
+			if( !unchangedCreator )
+			{
+				badBlocks.push_back(tmpCurHash);
+				failureCondition.push_back(4);
+			}
+			if( !validStateChange )
+			{
+				badBlocks.push_back(tmpCurHash);
+				failureCondition.push_back(5);
+			}
+			if( !hashesMatch )
+			{
+				badBlocks.push_back(tmpCurHash);
+				failureCondition.push_back(6);
+			}
+			
 		}
 		fclose(fPtr);
 	}
 	
+	/*
+		CONDITIONS VERIFIED
+		1) Previous Hash field matches the hash of the parent block
+		2) Strictly Increasing Time
+		3) Unique Item ID has unchanged Case ID
+		4) Unique Item ID has unchanged Creator
+		5) Item has appropriate state changes
+		6) Recompute the hash of the stored data and compare to the stored hash
+	*/
+	//print how many transactions are in the blockchain
 	printf("Transactions in blockchain: %d\n", transCount);
 	if( allGood )
 	{
@@ -1311,7 +1563,36 @@ void verify()
 	}
 	else
 	{
-		//Error TODOs
+		//Errors were detected
+		printf("State of blockchain: ERROR\n");
+		for( int i = 0; i < badBlocks.size(); i++ )
+		{
+			//print the hash of the block with the error
+			printf("Bad block: %s\n", badBlocks[i].c_str());
+			//print a description of the identified error
+			switch( failureCondition[i] )
+			{
+				case 1:
+						printf("Previous Hash block content does not match parent block hash\n");
+					break;
+				case 2:
+						printf("Time not strictly increasing block chain events\n");
+					break;
+				case 3:
+						printf("Case ID changed for Evidence Item\n");
+					break;
+				case 4:
+						printf("Creator changed for Evidence Item\n");
+					break;
+				case 5:
+						printf("Evidence Item had invalid State Change\n");
+					break;
+				case 6:
+						printf("Block contents do not match block checksum\n");
+					break;
+			}
+			printf("\n");
+		}
 	}
 }
 

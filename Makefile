@@ -16,4 +16,4 @@ FORCE:
 #name is not found
 clean:
 	rm bchoc || true
-	rm CoC.txt || true
+	rm CoC.bin || true
