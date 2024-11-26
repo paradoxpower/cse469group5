@@ -21,7 +21,7 @@
 using namespace std;
 
 //define the fundamental Block struct
-const int BLOCK_PREV_HASH_SIZE = 64; //directions say "32 bytes" but also a SHA-256 hash which is 64 bytes
+const int BLOCK_PREV_HASH_SIZE = 32;
 const int BLOCK_TIMESTAMP_SIZE = 8;
 const int BLOCK_CASE_ID_SIZE = 32;
 const int BLOCK_ITEM_ID_SIZE = 32;
@@ -51,14 +51,12 @@ union
 //after these defined sections will be a dynamic data field that can
 //be 0 - 2^32 bytes long per the value in dataLen
 
-//each block will be followed by it's SHA-256 hash (32bytes)
-unsigned char blockCurHash[BLOCK_PREV_HASH_SIZE];
-
 //define constants for this effort (all of the following are in bytes)
 const string COC_FILE = "CoC.bin";
 //Size & offset constants for each block (before variable data field)
 /*
 	Data Layout
+	=============
 	Byte 0-63	= Previous Hash
 	Byte 64-71	= Timestamp
 	Byte 72-103	= Case ID
@@ -67,6 +65,8 @@ const string COC_FILE = "CoC.bin";
 	Byte 148-159= Creator
 	Byte 160-171= Owner
 	Byte 172-175= Data Length
+	--variable length data field--
+	Last 32 bytes for Hash of current Block (all above content)
 */
 const int BLOCK_PREV_HASH_OFFSET = 0;
 const int BLOCK_TIMESTAMP_OFFSET = BLOCK_PREV_HASH_OFFSET + BLOCK_PREV_HASH_SIZE;
@@ -88,7 +88,7 @@ const string BCHOC_PASSWORD_LAWYER = "L76L";
 const string BCHOC_PASSWORD_ANALYST = "A65A";
 const string BCHOC_PASSWORD_EXECUTIVE = "E69E";
 const string BCHOC_PASSWORD_CREATOR = "C67C";
-//data encryption key
+//data encryption key (per guidance)
 const char* AES_KEY = "R0chLi4uLi4uLi4=";
 
 /*
@@ -111,6 +111,7 @@ bool fileExists()
 	{
 		exists = true;
 	}
+	fclose(fPtr);
 	return exists;
 }
  
@@ -131,7 +132,7 @@ void writeToFile(string writeText)
  */
 string computeHash( string &contents )
 {
-	string hashResult;
+	string hashResult = "";
 	//use OpenSSL to compute the SHA256 hash
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 	SHA256_CTX sha256;
@@ -143,8 +144,19 @@ string computeHash( string &contents )
 	{
 		ss << hex << setw(2) << setfill('0') << (int)hash[i];
 	}
-	//store the hash result
-	hashResult = ss.str();
+	//the above generates the SH256 hash as a 64byte string
+	//we need to translate the characters into their hex bytes
+	//to create a 32 byte Hash
+	unsigned char hexValues[BLOCK_PREV_HASH_SIZE];
+	string holdingString = ss.str();
+	for(int i = 0; i < BLOCK_PREV_HASH_SIZE; i++)
+	{
+		int idx = i*2;
+		//this will take 2 characters and translate them into
+		//their byte-length hex equivalent and store the value
+		hexValues[i] = stoi( holdingString.substr(idx, 2), NULL, 16 );
+	}
+	hashResult.append((const char*)&hexValues[0], BLOCK_PREV_HASH_SIZE);
 	
 	return hashResult;
 }
@@ -158,7 +170,7 @@ void encryptBytes( unsigned char* itemToEncrypt, int itemLength )
 {
 	//how many unique bytes are in the key for XOR processing
 	int AES_KEY_length = 16;
-	//encrypt byte by bte
+	//encrypt byte by byte
 	for( int i = 0; i < itemLength; i++ )
 	{
 		int keyPosition = i % AES_KEY_length;
@@ -175,7 +187,7 @@ void decryptBytes( unsigned char* itemToDecrypt, int itemLength )
 {
 	//how many unique bytes are in the key for XOR processing
 	int AES_KEY_length = 16;
-	//encrypt byte by bte
+	//encrypt byte by byte
 	for( int i = 0; i < itemLength; i++ )
 	{
 		int keyPosition = i % AES_KEY_length;
@@ -205,7 +217,7 @@ string translateTimestamp( uint64_t inTime )
 	//extract the microseconds from the input Time
 	int microseconds = inTime % 1000000;
 	time_t remainder = inTime / 1000000;
-	//format the remaining YYYY-MM-DD & HH:M:SS time
+	//format the remaining YYYY-MM-DD (%F) & HH:M:SS (%T) time
 	struct tm* time = localtime(&remainder);
 	char buffer[80];
 	strftime( buffer, 80, "%FT%T.", time );
@@ -239,8 +251,7 @@ bool cocIsInit()
 		unsigned char readState[BLOCK_STATE_SIZE];
 		fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr );
 		//Compare to expected Init value
-		unsigned char expectedState[] = {'I','N','I','T','I','A','L',
-										'\0','\0','\0','\0','\0'};
+		unsigned char expectedState[] = {'I','N','I','T','I','A','L','\0','\0','\0','\0','\0'};
 		for( int pos = 0; pos < BLOCK_STATE_SIZE; pos++ )
 		{
 			//if any byte does not match, it is an invalid init block
@@ -401,29 +412,73 @@ int getEvidenceState( unsigned char* itemToCheck )
 					//read out the State in this block
 					fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr);
 					//check for: CHECKEDIN, CHECKEDOUT, DESTROYED, DISPOSED, RELEASED
-					if( 'C' == readState[0] )
+					unsigned char tmpCI[] = {'C','H','E','C','K','E','D','I','N','\0','\0','\0'};
+					unsigned char tmpCO[] = {'C','H','E','C','K','E','D','O','U','T','\0','\0'};
+					unsigned char tmpDE[] = {'D','E','S','T','R','O','Y','E','D','\0','\0','\0'};
+					unsigned char tmpDI[] = {'D','I','S','P','O','S','E','D','\0','\0','\0','\0'};
+					unsigned char tmpRE[] = {'R','E','L','E','A','S','E','D','\0','\0','\0','\0'};
+					//CHECKEDIN check
+					bool stateMatch = true;
+					for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
 					{
-						if( 'I' == readState[7] )
+						if( readState[i] != tmpCI[i] )
 						{
-							latestState = (int)CHECKEDIN;
-						}
-						else if( 'O' == readState[7] )
-						{
-							latestState = (int)CHECKEDOUT;
+							stateMatch = false;
 						}
 					}
-					else if( 'D' == readState[0] )
+					if( stateMatch )
 					{
-						if( 'E' == readState[1] )
+						latestState = (int)CHECKEDIN;
+					}
+					//CHECKEDOUT check
+					stateMatch = true;
+					for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
+					{
+						if( readState[i] != tmpCO[i] )
 						{
-							latestState = (int)DESTROYED;
-						}
-						else if( 'I' == readState[1] )
-						{
-							latestState = (int)DISPOSED;
+							stateMatch = false;
 						}
 					}
-					else if( 'R' == readState[0] )
+					if( stateMatch )
+					{
+						latestState = (int)CHECKEDOUT;
+					}
+					//DISPOSED check
+					stateMatch = true;
+					for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
+					{
+						if( readState[i] != tmpDI[i] )
+						{
+							stateMatch = false;
+						}
+					}
+					if( stateMatch )
+					{
+						latestState = (int)DISPOSED;
+					}
+					//DESTROYED check
+					stateMatch = true;
+					for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
+					{
+						if( readState[i] != tmpDE[i] )
+						{
+							stateMatch = false;
+						}
+					}
+					if( stateMatch )
+					{
+						latestState = (int)DESTROYED;
+					}
+					//RELEASED check
+					stateMatch = true;
+					for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
+					{
+						if( readState[i] != tmpRE[i] )
+						{
+							stateMatch = false;
+						}
+					}
+					if( stateMatch )
 					{
 						latestState = (int)RELEASED;
 					}
@@ -532,16 +587,16 @@ void init()
 			memcpy( &blockState[0], setValue.c_str(), setValue.size() );
 			setValue = "Initial block";
 			blockDataLen.intLen = setValue.size();
-			//create the INITAL block and append it
+			//create the INITIAL block and append it
 			string initialBlock = blockToString( setValue );
 			writeToFile( initialBlock );
 		}
-		//else we have a block chain without an INITIAL block
+		//else we have a block chain witha 1st block other than an INITIAL
 	}
 }
  
 /**
- * @dev Mthod to add a new evidence item t othe blockchain
+ * @dev Method to add a new evidence item t othe blockchain
  * @param The case to associate to the item
  * @param The item to attempt to add
  * @param The Creator name to asosciate to the item
@@ -570,7 +625,7 @@ void addItemToCase( string inCaseId, string inItemId, string inCreator )
 		//copy Case Id (then encrypt the bytes)
 		memcpy( &blockCaseID[0], inCaseId.c_str(), inCaseId.size() );
 		encryptBytes( &blockCaseID[0], BLOCK_CASE_ID_SIZE );
-		//copy Item Id (bytes already encrypted)
+		//copy Item Id (bytes already encrypted befoer checking evidence state)
 		memcpy( &blockItemID[0], &itemID[0], BLOCK_ITEM_ID_SIZE );
 		//set default state
 		string defaultState = "CHECKEDIN";
@@ -1649,6 +1704,7 @@ int main( int argc, char* argv[] )
 					//do not exceed 32char length
 					if( cmdCaseId.size() > 32 )
 					{
+						printf("Case ID longer than 32 characters. Trimming input.\n");
 						cmdCaseId = cmdCaseId.substr(0, 32);
 					}
 				}
@@ -1662,6 +1718,7 @@ int main( int argc, char* argv[] )
 					//do not exceed 12char length
 					if( cmdCreator.size() > 12 )
 					{
+						printf("Creator longer than 12 characters. Trimming input.\n");
 						cmdCreator = cmdCreator.substr(0, 12);
 					}
 				}
@@ -1691,6 +1748,7 @@ int main( int argc, char* argv[] )
 							//do not exceed 32char length
 							if( cmdItemId.size() > 32 )
 							{
+								printf("Item ID longer than 32 characters. Trimming input.\n");
 								cmdItemId = cmdItemId.substr(0, 32);
 							}
 							//(TODO) encrypt Case & Item here
@@ -1753,6 +1811,7 @@ int main( int argc, char* argv[] )
 						//do not exceed 32char length
 						if( cmdItemId.size() > 32 )
 						{
+							printf("Item ID longer than 32 characters. Trimming input.\n");
 							cmdItemId = cmdItemId.substr(0, 32);
 						}
 						checkoutItem( cmdItemId, passwordId );
@@ -1800,6 +1859,7 @@ int main( int argc, char* argv[] )
 						//do not exceed 32char length
 						if( cmdItemId.size() > 32 )
 						{
+							printf("Item ID longer than 32 characters. Trimming input.\n");
 							cmdItemId = cmdItemId.substr(0, 32);
 						}
 						checkinItem( cmdItemId, passwordId );
@@ -1837,6 +1897,7 @@ int main( int argc, char* argv[] )
 					//do not exceed 32char length
 					if( cmdItemId.size() > 32 )
 					{
+						printf("Item ID longer than 32 characters. Trimming input.\n");
 						cmdItemId = cmdItemId.substr(0, 32);
 					}
 				}
@@ -1854,7 +1915,7 @@ int main( int argc, char* argv[] )
 					}
 				}
 			}
-			//Find the Creator
+			//Find the reason for removal text
 			for( int arg = 0; arg < argc; arg++ )
 			{
 				//guidelines specify "-o" and "--why" as reason flags
@@ -1958,6 +2019,7 @@ int main( int argc, char* argv[] )
 							//do not exceed 32char length
 							if( cmdCaseId.size() > 32 )
 							{
+								printf("Case ID longer than 32 characters. Trimming input.\n");
 								cmdCaseId = cmdCaseId.substr(0, 32);
 							}
 							showItems( cmdCaseId );
@@ -1990,6 +2052,7 @@ int main( int argc, char* argv[] )
 							//do not exceed 32char length
 							if( cmdItemId.size() > 32 )
 							{
+								printf("Case ID longer than 32 characters. Trimming input.\n");
 								cmdItemId = cmdItemId.substr(0, 32);
 							}
 						}
@@ -2003,6 +2066,7 @@ int main( int argc, char* argv[] )
 							//do not exceed 32char length
 							if( cmdItemId.size() > 32 )
 							{
+								printf("Item ID longer than 32 characters. Trimming input.\n");
 								cmdItemId = cmdItemId.substr(0, 32);
 							}
 						}
