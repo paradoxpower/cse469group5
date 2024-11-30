@@ -6,6 +6,7 @@
 
 //standard support libraries
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <iostream>
 #include <fstream>
@@ -53,21 +54,19 @@ union
 //be 0 - 2^32 bytes long per the value in dataLen
 
 //define constants for this effort (all of the following are in bytes)
-const string COC_FILE = getenv("BCHOC_FILE_PATH");
 //Size & offset constants for each block (before variable data field)
 /*
 	Data Layout
 	=============
-	Byte 0-63	= Previous Hash
-	Byte 64-71	= Timestamp
-	Byte 72-103	= Case ID
-	Byte 104-135= Evidence Item ID
-	Byte 136-147= State
-	Byte 148-159= Creator
-	Byte 160-171= Owner
-	Byte 172-175= Data Length
+	Byte 0-31	= Previous Hash
+	Byte 32-39	= Timestamp
+	Byte 40-71	= Case ID
+	Byte 72-103	= Evidence Item ID
+	Byte 104-115= State
+	Byte 116-127= Creator
+	Byte 128-139= Owner
+	Byte 140-143= Data Length
 	--variable length data field--
-	Last 32 bytes for Hash of current Block (all above content)
 */
 const int BLOCK_PREV_HASH_OFFSET = 0;
 const int BLOCK_TIMESTAMP_OFFSET = BLOCK_PREV_HASH_OFFSET + BLOCK_PREV_HASH_SIZE;
@@ -91,6 +90,9 @@ const string BCHOC_PASSWORD_EXECUTIVE = "E69E";
 const string BCHOC_PASSWORD_CREATOR = "C67C";
 //data encryption key (per guidance)
 const char* AES_KEY = "R0chLi4uLi4uLi4=";
+
+//declare a global filename to use (set during main)
+string COC_FILE;
 
 /*
  * =============
@@ -309,7 +311,34 @@ void resetBlockBytes()
 
 /**
  * @dev This method takes all the block info and converts into a block that gets it's
- *		hash computed before adding it the end of the blockchain
+ *		hash computed
+ */
+string recomputeHash( unsigned char* readPrevHash, unsigned char* readTimestamp, unsigned char* readCaseId,
+						unsigned char* readItemId, unsigned char* readState, unsigned char* readCreator,
+						unsigned char* readOwner, unsigned char* readDataLen, unsigned char* dataField, int dataFieldLen )
+{
+	string completeBlock = "";
+	//append the sections in order
+	completeBlock.append((const char*)readPrevHash, BLOCK_PREV_HASH_SIZE);
+	completeBlock.append((const char*)readTimestamp, BLOCK_TIMESTAMP_SIZE);
+	completeBlock.append((const char*)readCaseId, BLOCK_CASE_ID_SIZE);
+	completeBlock.append((const char*)readItemId, BLOCK_ITEM_ID_SIZE);
+	completeBlock.append((const char*)readState, BLOCK_STATE_SIZE);
+	completeBlock.append((const char*)readCreator, BLOCK_CREATOR_SIZE);
+	completeBlock.append((const char*)readOwner, BLOCK_OWNER_SIZE);
+	completeBlock.append((const char*)readDataLen, BLOCK_DATA_LEN_SIZE);
+	
+	//append the data field (passed as an arg)
+	completeBlock.append((const char*)dataField, dataFieldLen );
+	//compute and append the hash value of this block
+	string result = computeHash(completeBlock);
+	
+	return result;
+}
+
+/**
+ * @dev This method takes all the block info and converts into a block that gets
+ *		added to the end of the blockchain
  */
 string blockToString( string dataField )
 {
@@ -326,8 +355,6 @@ string blockToString( string dataField )
 	
 	//append the data field (passed as an arg)
 	completeBlock.append( dataField );
-	//compute and append the hash value of this block
-	completeBlock.append( computeHash(completeBlock) );
 	
 	return completeBlock;
 }
@@ -342,16 +369,6 @@ int getEvidenceState( unsigned char* itemToCheck )
 	//confirm the file exists before attempting to read it
 	if( fileExists() )
 	{
-		//store the reads of data
-		unsigned char readPrevHash[BLOCK_PREV_HASH_SIZE];
-		unsigned char readItem[BLOCK_ITEM_ID_SIZE];
-		unsigned char readState[BLOCK_STATE_SIZE];
-		union
-		{
-			unsigned int intLen;
-			unsigned char byteLen[4];
-		} readDataLen;
-		
 		//get the current contents of the blockchain
 		FILE* fPtr;
 		fPtr = fopen( COC_FILE.c_str(), "rb" );
@@ -361,27 +378,56 @@ int getEvidenceState( unsigned char* itemToCheck )
 		endPtr = fopen( COC_FILE.c_str(), "rb" );
 		fseek( endPtr, 0, SEEK_END );
 		
-		//get the state of the first block (SEEK_SET = start of file)
-		fseek( fPtr, BLOCK_DATA_LEN_OFFSET, SEEK_SET );
-		//Initial block can be skipped, compute the offset to skip it
-		//read the length of this data field
-		fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
-		//advance from the DataLen field to the end of the data field
-		//(recall the "fread" advances the fPtr)
-		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-		//read the hash of this block before advancing to the next
-		//and store it in the Previous Hash global variable
-		fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
-		//we need to sequentially check every block to determine the latest
-		//state of this evidence item
-		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
+		//set an inital hash to compare (known to be all 0s)
+		unsigned char initHash[BLOCK_PREV_HASH_SIZE];
+		memset( &initHash[0], 0, BLOCK_PREV_HASH_SIZE);
+		string recomputedHash = "";
+		recomputedHash.append((const char*)&initHash[0], BLOCK_PREV_HASH_SIZE);
+		//loop all blocks
+		while( (ftell(fPtr) + BLOCK_MIN_SIZE) <= ftell(endPtr) )
 		{
 			/*printf("fPtr %d\n", ftell(fPtr));
 			printf("endPtr %d\n", ftell(endPtr));*/
-			//check hash on last block matches logged prevHash in current block
-			fread( readPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
+			//store the reads of data (Data field will be allocated for each block)
+			unsigned char readPrevHash[BLOCK_PREV_HASH_SIZE];
+			unsigned char readCase[BLOCK_CASE_ID_SIZE];
+			unsigned char readItem[BLOCK_ITEM_ID_SIZE];
+			unsigned char readState[BLOCK_STATE_SIZE];
+			unsigned char readCreator[BLOCK_CREATOR_SIZE];
+			unsigned char readOwner[BLOCK_OWNER_SIZE];
+			union
+			{
+				uint64_t dblTime;
+				unsigned char byteTime[BLOCK_TIMESTAMP_SIZE];
+			} readTimestamp;
+			union
+			{
+				unsigned int intLen;
+				unsigned char byteLen[4];
+			} readDataLen;
+			unsigned char readCurHash[BLOCK_PREV_HASH_SIZE];
+			
+			//from the start of the block, read the data
+			fread( readPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr);
+			fread( readTimestamp.byteTime, sizeof(char), BLOCK_TIMESTAMP_SIZE, fPtr);
+			fread( readCase, sizeof(char), BLOCK_CASE_ID_SIZE, fPtr);
+			fread( readItem, sizeof(char), BLOCK_ITEM_ID_SIZE, fPtr);
+			fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr );
+			fread( readCreator, sizeof(char), BLOCK_CREATOR_SIZE, fPtr );
+			fread( readOwner, sizeof(char), BLOCK_OWNER_SIZE, fPtr );
+			fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
+			int lengthOfData = readDataLen.intLen;
+			unsigned char dataField[lengthOfData];
+			if( lengthOfData > 0 )
+			{
+				fread( &dataField[0], sizeof(char), lengthOfData, fPtr );
+			}
+			
+			//check computed hash on last block matches logged prevHash in current block
+			string prevHashResult = "";
+			prevHashResult.append((const char*)&readPrevHash[0], BLOCK_PREV_HASH_SIZE);
 			bool hashMatch = true;
-			if( 0 != memcmp(&blockPrevHash[0], &readPrevHash[0], BLOCK_PREV_HASH_SIZE) )
+			if( 0 != recomputedHash.compare(prevHashResult) )
 			{
 				hashMatch = false;
 			}
@@ -389,17 +435,9 @@ int getEvidenceState( unsigned char* itemToCheck )
 			//proceed with efforts if the hashes match
 			if( hashMatch )
 			{
-				//printf("Good chain link\n");
-				//reset the Item ID to compare variable
-				memset( &readItem[0], 0, BLOCK_ITEM_ID_SIZE);
-				int offsetToNextField = 0;
-				//advance from the end of the previous hash to the item id
-				offsetToNextField = BLOCK_ITEM_ID_OFFSET - (BLOCK_PREV_HASH_OFFSET + BLOCK_PREV_HASH_SIZE);
-				fseek( fPtr, offsetToNextField, SEEK_CUR );
-				//read out the Item ID in this block
-				fread( readItem, sizeof(char), BLOCK_ITEM_ID_SIZE, fPtr);
+				//check if the read item matches the one we're looking for
 				bool itemMatch = true;
-				for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
+				for( int i = 0; i < BLOCK_ITEM_ID_SIZE; i++ )
 				{
 					if( readItem[i] != itemToCheck[i] )
 					{
@@ -408,18 +446,10 @@ int getEvidenceState( unsigned char* itemToCheck )
 				}
 				if( itemMatch )
 				{
-					//printf("Matching IDs\n");
-					//for convenience, copy the Case ID of this evidence item
-					//into the blockCaseId array (helpful for checkins, checkouts, removes)
-					//first, backup from the end of the evidence id to the start of the case id
-					offsetToNextField = -(BLOCK_ITEM_ID_SIZE + BLOCK_CASE_ID_SIZE);
-					fseek( fPtr, offsetToNextField, SEEK_CUR );
-					fread( blockCaseID, sizeof(char), BLOCK_CASE_ID_SIZE, fPtr);
-					//advance from the end of the Case Id to the Evidence state
-					offsetToNextField = BLOCK_STATE_OFFSET - (BLOCK_CASE_ID_OFFSET + BLOCK_CASE_ID_SIZE);
-					fseek( fPtr, offsetToNextField, SEEK_CUR );
-					//read out the State in this block
-					fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr);
+					//for convenience, copy the Case ID & Creator of this evidence item
+					memcpy( &blockCaseID[0], &readCase[0], BLOCK_CASE_ID_SIZE );
+					memcpy( &blockCreator[0], &readCreator[0], BLOCK_CREATOR_SIZE );
+					//now check the state of this item
 					//check for: CHECKEDIN, CHECKEDOUT, DESTROYED, DISPOSED, RELEASED
 					unsigned char tmpCI[] = {'C','H','E','C','K','E','D','I','N','\0','\0','\0'};
 					unsigned char tmpCO[] = {'C','H','E','C','K','E','D','O','U','T','\0','\0'};
@@ -491,33 +521,13 @@ int getEvidenceState( unsigned char* itemToCheck )
 					{
 						latestState = (int)RELEASED;
 					}
-					//for convenience, copy the Case ID of this evidence item
-					//into the blockCaseId array (helpful for checkins, checkouts, removes)
-					//first, backup from the end of the evidence id to the start of the case id
-					offsetToNextField = BLOCK_CREATOR_OFFSET - (BLOCK_STATE_OFFSET + BLOCK_STATE_SIZE);
-					fseek( fPtr, offsetToNextField, SEEK_CUR );
-					fread( blockCreator, sizeof(char), BLOCK_CREATOR_SIZE, fPtr);
-					//After all of the above, advance to the data length field
-					//from the end of the creator field
-					offsetToNextField = BLOCK_DATA_LEN_OFFSET - (BLOCK_CREATOR_OFFSET + BLOCK_CREATOR_SIZE);
-					fseek( fPtr, offsetToNextField, SEEK_CUR );
 				}
-				else
-				{
-					//On no Item ID match, advance to the data length field
-					//from the end of the Item ID field
-					offsetToNextField = BLOCK_DATA_LEN_OFFSET - (BLOCK_ITEM_ID_OFFSET + BLOCK_ITEM_ID_SIZE);
-					fseek( fPtr, offsetToNextField, SEEK_CUR );
-				}
-				
-				//the fPtr has already been moved to the DataLen area by now
-				fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
-				//advance from the DataLen field to the end of the data field
-				//(recall the "fread" advances the fPtr)
-				fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-				//read the hash of this block before advancing to the next
-				//and store it in the Previous Hash global variable
-				fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
+				//proceed to next block in chain after computing hash to check
+				recomputedHash = recomputeHash( &readPrevHash[0], &readTimestamp.byteTime[0],
+						&readCase[0], &readItem[0], &readState[0], &readCreator[0],
+						&readOwner[0], &readDataLen.byteLen[0], &dataField[0], lengthOfData);
+				//for convenience, store this has in the blockPrevHash
+				memcpy( &blockPrevHash[0], recomputedHash.c_str(), BLOCK_PREV_HASH_SIZE );
 			}
 			else
 			{
@@ -601,12 +611,16 @@ void init()
 					i = -1;
 				}
 			}
-			//take the substring containing the folder path
-			string folderPath = COC_FILE.substr( 0, idxOfNameStart );
-			//if it doesnt exist, create it
-			if( 0 != stat(folderPath.c_str(), &existence) )
+			//FILE_PATH includes more than just filename
+			if( -1 != idxOfNameStart )
 			{
-				mkdir( folderPath.c_str(), 0777 );
+				//take the substring containing the folder path
+				string folderPath = COC_FILE.substr( 0, idxOfNameStart );
+				//if it doesnt exist, create it
+				if( 0 != stat(folderPath.c_str(), &existence) )
+				{
+					mkdir( folderPath.c_str(), 0777 );
+				}
 			}
 			//Initialize the fields (reset 0s everything as deired)
 			resetBlockBytes();
@@ -614,8 +628,7 @@ void init()
 			//get time of creation
 			blockTimestamp.dblTime = unixTimestamp();;
 			//case-id can remain all 0s
-			//item-id needs to be "0\0\0\0..." because "0000..." fails auto-grader
-			memset( &blockItemID[1], 0, BLOCK_ITEM_ID_SIZE-1);
+			//item-id can remain all 0s
 			//set state to INITIAL
 			string setValue = "INITIAL";
 			memcpy( &blockState[0], setValue.c_str(), setValue.size() );
@@ -636,9 +649,6 @@ void init()
 			blockDataLen.intLen = valByteLen;
 			//create the INITIAL block and append it
 			string initialBlock = blockToString( setValue );
-			//initial block has all 0s for hash, manually set that here
-			int blockLen = initialBlock.size();
-			memset( &initialBlock[blockLen - BLOCK_PREV_HASH_SIZE], 0, BLOCK_PREV_HASH_SIZE );
 			//make first entry in file
 			writeToFile( initialBlock );
 		}
@@ -690,7 +700,8 @@ int addItemToCase( string inCaseId, string inItemId, string inCreator )
 		memcpy( &blockCreator[0], inCreator.c_str(), inCreator.size() );
 		//Owner is set to creator since this is a creation event
 		memcpy( &blockOwner[0], inCreator.c_str(), inCreator.size() );
-		//DataLen is left as 0 and Data field is empty
+		//set the data length to 0 since there is no data field value
+		blockDataLen.intLen = 0;
 		
 		//BCHOC does not support comments in the data field during adds
 		string nextBlock = blockToString( "" );
@@ -986,12 +997,9 @@ void showCases()
 		//advance from the DataLen field to the end of the data field
 		//(recall the "fread" advances the fPtr)
 		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-		//read the hash of this block before advancing to the next
-		//and store it in the Previous Hash global variable
-		fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
-		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
+		while( (ftell(fPtr) + BLOCK_MIN_SIZE) <= ftell(endPtr) )
 		{
 			//notice, this method does no verification of blockchain integrity
 			//offset computational support
@@ -1027,9 +1035,6 @@ void showCases()
 			//advance from the DataLen field to the end of the data field
 			//(recall the "fread" advances the fPtr)
 			fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-			//read the hash of this block before advancing to the next
-			//and store it in the Previous Hash global variable
-			fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
 		}
 		fclose(fPtr);
 	}
@@ -1096,12 +1101,9 @@ void showItems( string inCaseId )
 		//advance from the DataLen field to the end of the data field
 		//(recall the "fread" advances the fPtr)
 		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-		//read the hash of this block before advancing to the next
-		//and store it in the Previous Hash global variable
-		fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
-		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
+		while( (ftell(fPtr) + BLOCK_MIN_SIZE) <= ftell(endPtr) )
 		{
 			//notice, this method does no verification of blockchain integrity
 			//offset computational support
@@ -1145,9 +1147,6 @@ void showItems( string inCaseId )
 			//advance from the DataLen field to the end of the data field
 			//(recall the "fread" advances the fPtr)
 			fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-			//read the hash of this block before advancing to the next
-			//and store it in the Previous Hash global variable
-			fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
 		}
 		fclose(fPtr);
 	}
@@ -1228,7 +1227,7 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 		
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
-		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
+		while( (ftell(fPtr) + BLOCK_MIN_SIZE) <= ftell(endPtr) )
 		{
 			//notice, this method does no verification of blockchain integrity
 			//offset computational support
@@ -1307,9 +1306,6 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 			//advance from the DataLen field to the end of the data field
 			//(recall the "fread" advances the fPtr)
 			fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-			//read the hash of this block before advancing to the next
-			//and store it in the Previous Hash global variable
-			fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
 		}
 		fclose(fPtr);
 	}
@@ -1352,6 +1348,11 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 				//decrypt the item id for human readable output
 				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
 			}
+			else
+			{
+				//For INITIAL block, expected to print "0" instead of "0000..."
+				itemIdList[i] = "0";
+			}
 			//re-apply hifens
 			caseIdList[i].insert(20, "-");
 			caseIdList[i].insert(16, "-");
@@ -1384,6 +1385,11 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
 				//decrypt the item id for human readable output
 				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+			}
+			else
+			{
+				//For INITIAL block, expected to print "0" instead of "0000..."
+				itemIdList[i] = "0";
 			}
 			//re-apply hifens
 			caseIdList[i].insert(20, "-");
@@ -1421,7 +1427,7 @@ int verify()
 	//confirm the file exists before attempting to read it
 	if( fileExists() )
 	{
-		//store the reads of data (Dat field will be allocated for each block)
+		//store the reads of data (Data field will be allocated for each block)
 		unsigned char readPrevHash[BLOCK_PREV_HASH_SIZE];
 		unsigned char readCaseId[BLOCK_CASE_ID_SIZE];
 		unsigned char readItemId[BLOCK_ITEM_ID_SIZE];
@@ -1488,17 +1494,22 @@ int verify()
 		if( 0 != actualIniState.compare( initialState ) )
 		{
 			//Initial block is not marked as initial, flag error
-			allGood = true;
+			allGood = false;
 			validIniBlock = false;
 		}
-		
-		//advance from the DataLen field to the end of the data field
-		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-		//read the hash of this block before advancing to the next
-		//and store it in the Previous Hash global variable
-		fread( readCurHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
-		//after reading the hash, increment transaction counter
+		int lengthOfData = readDataLen.intLen;
+		unsigned char initDataField[lengthOfData];
+		if( lengthOfData > 0 )
+		{
+			fread( &initDataField[0], sizeof(char), lengthOfData, fPtr );
+		}
+		//after reading the dat field, increment transaction counter
 		transCount++;
+		
+		//compute the hash of the INITIAL block
+		string recomputedHash = recomputeHash( &readPrevHash[0], &readTimestamp.byteTime[0],
+						&readCaseId[0], &readItemId[0], &readState[0], &readCreator[0],
+						&readOwner[0], &readDataLen.byteLen[0], &initDataField[0], lengthOfData);
 		
 		//log if the INITIAL block had errors
 		if( !validIniBlock )
@@ -1507,18 +1518,20 @@ int verify()
 			//for reporting purposes
 			std::stringstream ss;
 			ss << hex;
-			for(int i=0;i<BLOCK_PREV_HASH_SIZE;++i)
-				ss << std::setw(2) << std::setfill('0') << (int)readCurHash[i];
+			for(int i = 0; i < BLOCK_PREV_HASH_SIZE; ++i)
+			{
+				ss << std::setw(2) << std::setfill('0') << (int)recomputedHash[i];
+			}
 			string stringHash = ss.str();
 			badBlocks.push_back(stringHash);
 			failureCondition.push_back(1);
 		}
 		
-		
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
 		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
 		{
+			
 			//variables to assist with field verification
 			string tmpCase = "";
 			string tmpItem = "";
@@ -1527,18 +1540,39 @@ int verify()
 			uint64_t tmpTime = 0;
 			string tmpData = "";
 			string tmpPrevHash = "";
-			string tmpCurHash = "";
 			
 			//since we are reading all fields, we can read them in order
 			//and leverage that fread will advance the pointer with each read
+			int blockHeadPtr = ftell(fPtr);
 			fread( readPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr);
 			fread( readTimestamp.byteTime, sizeof(char), BLOCK_TIMESTAMP_SIZE, fPtr);
 			fread( readCaseId, sizeof(char), BLOCK_CASE_ID_SIZE, fPtr);
 			fread( readItemId, sizeof(char), BLOCK_ITEM_ID_SIZE, fPtr);
+			int blockStatePtr = ftell(fPtr);
 			fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr );
 			fread( readCreator, sizeof(char), BLOCK_CREATOR_SIZE, fPtr );
 			fread( readOwner, sizeof(char), BLOCK_OWNER_SIZE, fPtr );
+			int blockDataLenPtr = ftell(fPtr);
 			fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
+			//now we need to scan whatever data may be in the data field
+			unsigned char readDataField[readDataLen.intLen];
+			if( readDataLen.intLen > 0 )
+			{
+				fread( readDataField, sizeof(char), readDataLen.intLen, fPtr );
+				tmpData.append((const char*)&readDataField[0], readDataLen.intLen);
+			}
+			//after reading the data field, increment transaction counter
+			transCount++;
+			
+			cout << "Head at: " << blockHeadPtr << endl;
+			//cout << "Prev Hash: " << readPrevHash << endl;
+			//cout << "Time: " << readTimestamp.dblTime << endl;
+			//cout << "Case ID (encrypt): " << readCaseId << endl;
+			//cout << "Item ID (encrypt): " << readItemId << endl;
+			cout << "State: " << readState << " / at offset: " << (blockStatePtr - blockHeadPtr) << endl;
+			//cout << "Creator: " << readCreator << endl;
+			//cout << "Owner: " << readOwner << endl;
+			cout << "DataLen: " << readDataLen.intLen << " / at offset: " << (blockDataLenPtr - blockHeadPtr) << endl;
 			
 			//Then we translate the data fields we intend to do futher tracking/comparisons
 			//of into other data types instead of raw bytes
@@ -1548,8 +1582,8 @@ int verify()
 			tmpState.append((const char*)&readState[0], BLOCK_STATE_SIZE);
 			tmpCreator.append((const char*)&readCreator[0], BLOCK_CREATOR_SIZE);
 			
-			//--- First Round of Verification Checks ---
-			//	2) Previous Hash field matches the hash of the parent block
+			//--- Verification Checks ---
+			//	2) Previous Hash matches the hash of the parent block
 			//	3) Strictly Increasing Time
 			//	4) Unique Item ID has unchanged Case ID
 			//	5) Unique Item ID has unchanged Creator
@@ -1558,15 +1592,11 @@ int verify()
 			
 			//#2
 			bool parentHashMatch = true;
-			for( int i = 0; i < BLOCK_PREV_HASH_SIZE; i++ )
+			string prevHashResult = "";
+			prevHashResult.append((const char*)&readPrevHash[0], BLOCK_PREV_HASH_SIZE);
+			if( 0 != recomputedHash.compare(prevHashResult) )
 			{
-				//NOTE -- "CurHash" is still ohlding the hash of the previous block
-				//and "PrevHash is the current blocks field storing the parent hash
-				if( readCurHash[i] != readPrevHash[i] )
-				{
-					parentHashMatch = false;
-					allGood = false;
-				}
+				parentHashMatch = false;
 			}
 			
 			//#3
@@ -1672,27 +1702,8 @@ int verify()
 				monitoredState[itemMonitored] = tmpState;
 			}
 			
-			//--- End of First Round Verificatoin ---
+			// --- End of Verification ---
 			
-			//now we need to scan whatever data may be in the data field
-			unsigned char readDataField[readDataLen.intLen];
-			if( readDataLen.intLen > 0 )
-			{
-				fread( readDataField, sizeof(char), readDataLen.intLen, fPtr );
-				tmpData.append((const char*)&readDataField[0], readDataLen.intLen);
-			}
-			
-			//read the hash of this block (this will advance the fPtr to
-			//the next block in the chain for when the while loop iterates)
-			fread( readCurHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
-			//after reading the hash, increment transaction counter
-			transCount++;
-			
-			//--- First Round of Verification Checks ---
-			//	7) Recompute the hash of the stored data and compare to the stored hash
-			
-			//#7
-			bool hashesMatch = true;
 			string thisBlock = "";
 			//recreate the block to compute it's hash and compare to the stored hash
 			thisBlock.append((const char*)&readPrevHash[0], BLOCK_PREV_HASH_SIZE);
@@ -1705,23 +1716,16 @@ int verify()
 			thisBlock.append((const char*)&readDataLen.byteLen[0], BLOCK_DATA_LEN_SIZE);
 			thisBlock.append( tmpData );
 			//compute and append the hash value of this block as a string
-			string recalcHash = computeHash(thisBlock);
-			//get the hash of this Block as a string
-			tmpCurHash.append((const char*)&readCurHash[0], BLOCK_PREV_HASH_SIZE);
-			//compare equivalence
-			if( 0 != recalcHash.compare( tmpCurHash ) )
-			{
-				hashesMatch = false;
-			}
-			
-			//--- End of Second Round Verificatoin ---
+			recomputedHash = computeHash(thisBlock);
 			
 			//convert the bytes back to human readable Hash value
 			//for reporting purposes
 			std::stringstream ss;
 			ss << hex;
-			for(int i=0;i<BLOCK_PREV_HASH_SIZE;++i)
-				ss << std::setw(2) << std::setfill('0') << (int)readCurHash[i];
+			for(int i = 0; i < BLOCK_PREV_HASH_SIZE; ++i)
+			{
+				ss << std::setw(2) << std::setfill('0') << (int)recomputedHash[i];
+			}
 			string stringHash = ss.str();
 			
 			//Catalog all failures for this Block
@@ -1750,14 +1754,13 @@ int verify()
 				badBlocks.push_back(stringHash);
 				failureCondition.push_back(6);
 			}
-			if( !hashesMatch )
-			{
-				badBlocks.push_back(stringHash);
-				failureCondition.push_back(7);
-			}
 			
 		}
 		fclose(fPtr);
+	}
+	else
+	{
+		printf("File not found\n");
 	}
 	
 	/*
@@ -1768,7 +1771,6 @@ int verify()
 		4) Unique Item ID has unchanged Case ID
 		5) Unique Item ID has unchanged Creator
 		6) Item has appropriate state changes
-		7) Recompute the hash of the stored data and compare to the stored hash
 	*/
 	//print how many transactions are in the blockchain
 	printf("Transactions in blockchain: %d\n", transCount);
@@ -1806,9 +1808,6 @@ int verify()
 				case 6:
 						printf("Evidence Item had invalid State Change\n");
 					break;
-				case 7:
-						printf("Block contents do not match block checksum\n");
-					break;
 			}
 			printf("\n");
 		}
@@ -1832,6 +1831,24 @@ int main( int argc, char* argv[] )
 	int mainResult = 0;
 	//Get the command from the command line
 	string inputCommand;
+	
+	//set a default file specification in case the env can't be read
+	COC_FILE = "./blockchain";
+	try
+	{
+		if( NULL != getenv("BCHOC_FILE_PATH") )
+		{
+			COC_FILE = getenv("BCHOC_FILE_PATH");
+		}
+		else
+		{
+			printf("Use default\n");
+		}
+	}
+	catch( exception e )
+	{
+		printf("Failure using getenv()\n");
+	}
 	
 	/*
 		Parse the command line arguments. Valid Options are:
