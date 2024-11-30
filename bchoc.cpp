@@ -13,6 +13,7 @@
 #include <sstream>
 #include <vector>
 #include <chrono>
+#include <sys/stat.h>
 //library supporting hashes
 #include <openssl/md5.h>
 #include <openssl/sha.h>
@@ -52,9 +53,7 @@ union
 //be 0 - 2^32 bytes long per the value in dataLen
 
 //define constants for this effort (all of the following are in bytes)
-const string BCHOC_FILE_PATH = getenv("BCHOC_FILE_PATH");
-string FILE_NAME = "blockchain"; 
-const string COC_FILE = BCHOC_FILE_PATH + "/" + FILE_NAME;
+const string COC_FILE = getenv("BCHOC_FILE_PATH");
 //Size & offset constants for each block (before variable data field)
 /*
 	Data Layout
@@ -146,7 +145,7 @@ string computeHash( string &contents )
 	{
 		ss << hex << setw(2) << setfill('0') << (int)hash[i];
 	}
-	//the above generates the SH256 hash as a 64byte string
+	//the above generates the SHA256 hash as a 64byte string
 	//we need to translate the characters into their hex bytes
 	//to create a 32 byte Hash
 	unsigned char hexValues[BLOCK_PREV_HASH_SIZE];
@@ -562,7 +561,6 @@ int checkPassword( string cmpPassword )
  * =============
  */
  
- #include <sys/stat.h>
 /**
  * @dev Method to create an INITIAL block if none exists
  */
@@ -585,19 +583,43 @@ void init()
 			printf("Blockchain file not found. Created INITIAL block\n");
 			//create the folder per BCHOC_FILE_PATH (first check it doesnt already exist)
 			struct stat existence;
-			if( 0 != stat(BCHOC_FILE_PATH.c_str(), &existence) )
+			int idxOfNameStart = -1;
+			for( int i = strlen(COC_FILE.c_str()); i >= 0; i-- )
 			{
-				mkdir( BCHOC_FILE_PATH.c_str(), 0777 );
+				//find the first instance of "/"
+				if( '/' == COC_FILE[i] )
+				{
+					idxOfNameStart = i + 1;
+					i = -1;
+				}
+			}
+			//take the substring containing the folder path
+			string folderPath = COC_FILE.substr( 0, idxOfNameStart );
+			//if it doesnt exist, create it
+			if( 0 != stat(folderPath.c_str(), &existence) )
+			{
+				mkdir( folderPath.c_str(), 0777 );
 			}
 			//Initialize the fields (reset 0s everything as deired)
 			resetBlockBytes();
-			//get the time the INITIAL block was created
-			blockTimestamp.dblTime = unixTimestamp();
 			//set specific fields
 			string setValue = "INITIAL";
 			memcpy( &blockState[0], setValue.c_str(), setValue.size() );
+			//do some ridiculous data manipulation to get the exact bytes "Initial Block\0"
 			setValue = "Initial block";
-			blockDataLen.intLen = setValue.size();
+			int valByteLen = setValue.size() + 1;
+			unsigned char dataBytes[setValue.size() + 1];
+			for( int i = 0; i < valByteLen; i++ )
+			{
+				dataBytes[i] = '\0';
+				if( i < setValue.size() )
+				{
+					dataBytes[i] = setValue[i];
+				}
+			}
+			setValue = "";
+			setValue.append((const char*)&dataBytes[0], valByteLen);
+			blockDataLen.intLen = valByteLen;
 			//create the INITIAL block and append it
 			string initialBlock = blockToString( setValue );
 			writeToFile( initialBlock );
@@ -1003,7 +1025,7 @@ void showCases()
 		caseIdList[i].insert(16, "-");
 		caseIdList[i].insert(12, "-");
 		caseIdList[i].insert(8, "-");
-		printf("Case: %s\n", caseIdList[i].c_str() );
+		printf("%s\n", caseIdList[i].c_str() );
 	}
 }
 
@@ -1319,7 +1341,7 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 			caseIdList[i].insert(8, "-");
 			//Time is a double of microseconds since Epoch, translate to human readable
 			//NOTICE - autograder expects a single string output
-			printf("Case: %s\nItem: %s\nACTION: %s\nTime: %s\n\n",
+			printf("case_id: %s\nevidence_id: %s\nstate: %s\ntimestamp: %s\n\n",
 						caseIdList[i].c_str(),
 						itemIdList[i].c_str(),
 						stateList[i].c_str(),
@@ -1352,7 +1374,7 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 			caseIdList[i].insert(8, "-");
 			//Time is a double of microseconds since Epoch, translate to human readable
 			//NOTICE - autograder expects a single string output
-			printf("Case: %s\nItem: %s\nACTION: %s\nTime: %s\n\n",
+			printf("case_id: %s\nevidence_id: %s\nstate: %s\ntimestamp: %s\n\n",
 						caseIdList[i].c_str(),
 						itemIdList[i].c_str(),
 						stateList[i].c_str(),
