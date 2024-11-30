@@ -282,8 +282,16 @@ void resetBlockBytes()
 	//Initialize the fields
 	memset( &blockPrevHash[0], 0, BLOCK_PREV_HASH_SIZE);
 	memset( &blockTimestamp.byteTime[0], 0, BLOCK_TIMESTAMP_SIZE);
-	memset( &blockCaseID[0], 0, BLOCK_CASE_ID_SIZE);
-	memset( &blockItemID[0], 0, BLOCK_ITEM_ID_SIZE);
+	//memset( &blockCaseID[0], 0, BLOCK_CASE_ID_SIZE);
+	//memset( &blockItemID[0], 0, BLOCK_ITEM_ID_SIZE);
+	for( int i = 0; i < BLOCK_CASE_ID_SIZE; i++ )
+	{
+		blockCaseID[i] = '0';
+	}
+	for( int i = 0; i < BLOCK_ITEM_ID_SIZE; i++ )
+	{
+		blockItemID[i] = '0';
+	}
 	for( int i = 0; i < BLOCK_STATE_SIZE; i++ )
 	{
 		blockState[i] = '\0';
@@ -603,6 +611,12 @@ void init()
 			//Initialize the fields (reset 0s everything as deired)
 			resetBlockBytes();
 			//set specific fields
+			//get time of creation
+			blockTimestamp.dblTime = unixTimestamp();;
+			//case-id can remain all 0s
+			//item-id needs to be "0\0\0\0..." because "0000..." fails auto-grader
+			memset( &blockItemID[1], 0, BLOCK_ITEM_ID_SIZE-1);
+			//set state to INITIAL
 			string setValue = "INITIAL";
 			memcpy( &blockState[0], setValue.c_str(), setValue.size() );
 			//do some ridiculous data manipulation to get the exact bytes "Initial Block\0"
@@ -622,6 +636,10 @@ void init()
 			blockDataLen.intLen = valByteLen;
 			//create the INITIAL block and append it
 			string initialBlock = blockToString( setValue );
+			//initial block has all 0s for hash, manually set that here
+			int blockLen = initialBlock.size();
+			memset( &initialBlock[blockLen - BLOCK_PREV_HASH_SIZE], 0, BLOCK_PREV_HASH_SIZE );
+			//make first entry in file
 			writeToFile( initialBlock );
 		}
 		//else we have a block chain witha 1st block other than an INITIAL
@@ -1341,7 +1359,7 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 			caseIdList[i].insert(8, "-");
 			//Time is a double of microseconds since Epoch, translate to human readable
 			//NOTICE - autograder expects a single string output
-			printf("case_id: %s\nevidence_id: %s\nstate: %s\ntimestamp: %s\n\n",
+			printf("Case: %s\nItem: %s\nAction: %s\nTime: %s\n\n",
 						caseIdList[i].c_str(),
 						itemIdList[i].c_str(),
 						stateList[i].c_str(),
@@ -1374,7 +1392,7 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 			caseIdList[i].insert(8, "-");
 			//Time is a double of microseconds since Epoch, translate to human readable
 			//NOTICE - autograder expects a single string output
-			printf("case_id: %s\nevidence_id: %s\nstate: %s\ntimestamp: %s\n\n",
+			printf("Case: %s\nItem: %s\nAction: %s\nTime: %s\n\n",
 						caseIdList[i].c_str(),
 						itemIdList[i].c_str(),
 						stateList[i].c_str(),
@@ -2253,7 +2271,7 @@ int main( int argc, char* argv[] )
 					//Find the Reverse Flag
 					for( int arg = 0; arg < argc; arg++ )
 					{
-						if( 0 == strcmp("-r", argv[arg]) )
+						if( (0 == strcmp("-r", argv[arg])) || (0 == strcmp("--reverse", argv[arg])) )
 						{
 							reverse = true;
 						}
