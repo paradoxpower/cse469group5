@@ -52,7 +52,7 @@ union
 //be 0 - 2^32 bytes long per the value in dataLen
 
 //define constants for this effort (all of the following are in bytes)
-const string COC_FILE = "CoC.bin";
+const string COC_FILE = "blockchain";
 //Size & offset constants for each block (before variable data field)
 /*
 	Data Layout
@@ -110,8 +110,8 @@ bool fileExists()
 	if( fPtr )
 	{
 		exists = true;
+		fclose(fPtr);
 	}
-	fclose(fPtr);
 	return exists;
 }
  
@@ -582,6 +582,8 @@ void init()
 			printf("Blockchain file not found. Created INITIAL block\n");
 			//Initialize the fields (reset 0s everything as deired)
 			resetBlockBytes();
+			//get the time the INITIAL block was created
+			blockTimestamp.dblTime = unixTimestamp();
 			//set specific fields
 			string setValue = "INITIAL";
 			memcpy( &blockState[0], setValue.c_str(), setValue.size() );
@@ -601,8 +603,13 @@ void init()
  * @param The item to attempt to add
  * @param The Creator name to asosciate to the item
  */
-void addItemToCase( string inCaseId, string inItemId, string inCreator )
+int addItemToCase( string inCaseId, string inItemId, string inCreator )
 {
+	//check if method successfully added (0 = success / 1 = failure)
+	int result = 0;
+	//if we add before creating an INITIAL block, create one
+	init();
+	
 	//before attempting to add a block,
 	//clear out any existing data i nthe arrays
 	resetBlockBytes();
@@ -649,7 +656,10 @@ void addItemToCase( string inCaseId, string inItemId, string inCreator )
 	else
 	{
 		printf("Evidence already exists\n");
+		result = 1;
 	}
+	
+	return result;
 }
 
 /**
@@ -657,8 +667,10 @@ void addItemToCase( string inCaseId, string inItemId, string inCreator )
  * @param The item id to attempt to checkout
  * @param The password will set the owner based on the password used to complete the action
  */
-void checkoutItem( string inItemId, int checkoutPassword )
+int checkoutItem( string inItemId, int checkoutPassword )
 {
+	//check if method successfully added (0 = success / 1 = failure)
+	int result = 0;
 	//before attempting to checkout an item
 	//clear out any existing data in the arrays
 	resetBlockBytes();
@@ -721,7 +733,11 @@ void checkoutItem( string inItemId, int checkoutPassword )
 	else
 	{
 		printf("Evidence CANNOT be Checked Out\n");
+		result = 1; //return 1 on error
 	}
+	
+	//return result
+	return result;
 }
 
 /**
@@ -729,8 +745,10 @@ void checkoutItem( string inItemId, int checkoutPassword )
  * @param The item to attempt to checkin
  * @param The password used to complete the action will set the Owner field to POLICE/LAWYER/ANALYST/EXECUTIVE
  */
-void checkinItem( string inItemId, int checkoutPassword )
+int checkinItem( string inItemId, int checkoutPassword )
 {
+	//check if method successfully added (0 = success / 1 = failure)
+	int result = 0;
 	//before attempting to checkin an item,
 	//clear out any existing data in the arrays
 	resetBlockBytes();
@@ -793,7 +811,10 @@ void checkinItem( string inItemId, int checkoutPassword )
 	else
 	{
 		printf("Evidence CANNOT be Checked In\n");
+		result = 1;
 	}
+	
+	return result;
 }
 
 /**
@@ -802,8 +823,10 @@ void checkinItem( string inItemId, int checkoutPassword )
  * @param removalType is the state change to DESTROYED/DISPOSED/RELEASED
  * @param removalReason is the string to put in the data field for the event (optional for all but RELEASED)
  */
-void removeItem( string inItemId, int removalType, string removalReason )
+int removeItem( string inItemId, int removalType, string removalReason )
 {
+	//check if method successfully added (0 = success / 1 = failure)
+	int result = 0;
 	//before attempting to checkin an item,
 	//clear out any existing data in the arrays
 	resetBlockBytes();
@@ -873,7 +896,10 @@ void removeItem( string inItemId, int removalType, string removalReason )
 	else
 	{
 		printf("Evidence CANNOT be Removed\n");
+		result = 1;
 	}
+	
+	return result;
 }
 
 /**
@@ -964,6 +990,10 @@ void showCases()
 	{
 		//decrypt the data for human readable output
 		decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+		caseIdList[i].insert(20, "-");
+		caseIdList[i].insert(16, "-");
+		caseIdList[i].insert(12, "-");
+		caseIdList[i].insert(8, "-");
 		printf("Case: %s\n", caseIdList[i].c_str() );
 	}
 }
@@ -1078,7 +1108,7 @@ void showItems( string inCaseId )
 	{
 		//decrypt the data for human readable output
 		decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
-		printf("Item: %s\n", itemIdList[i].c_str() );
+		printf("%s\n", itemIdList[i].c_str() );
 	}
 }
 
@@ -1147,16 +1177,6 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 		endPtr = fopen( COC_FILE.c_str(), "rb" );
 		fseek( endPtr, 0, SEEK_END );
 		
-		//get the state of the first block (SEEK_SET = start of file)
-		fseek( fPtr, BLOCK_DATA_LEN_OFFSET, SEEK_SET );
-		//Compute the offset to read the length of this data field
-		fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
-		//advance from the DataLen field to the end of the data field
-		//(recall the "fread" advances the fPtr)
-		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
-		//read the hash of this block before advancing to the next
-		//and store it in the Previous Hash global variable
-		fread( blockPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
 		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
@@ -1251,6 +1271,13 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 	{
 		numEntries = itemIdList.size();
 	}
+	//the INITIAL block isn't encrypted, so we shouldn't
+	//decrypt the results if it is among the list
+	bool listContainsInitialBlock = false;
+	if( (0 == origCaseId.compare("")) && (0 == origItemId.compare("")) )
+	{
+		listContainsInitialBlock = true;
+	}
 	//If "reverse" is true, print latest to oldest order
 	if( reverse )
 	{
@@ -1261,34 +1288,66 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 		}
 		for( int i = itemIdList.size()-1; i >= bottom; i-- )
 		{
-			//decrypt the case id for human readable output
-			decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
-			printf("Case: %s\n", caseIdList[i].c_str() );
-			//decrypt the item id for human readable output
-			decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
-			printf("Item: %s\n", itemIdList[i].c_str() );
-			//State is not encrypted, print as is
-			printf("ACTION: %s\n", stateList[i].c_str() );
+			//INITIAL block is not encrypted
+			if( !listContainsInitialBlock )
+			{
+				//decrypt the case id for human readable output
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				//decrypt the item id for human readable output
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+			}
+			else if( 0 != i )
+			{
+				//decrypt the case id for human readable output
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				//decrypt the item id for human readable output
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+			}
+			//re-apply hifens
+			caseIdList[i].insert(20, "-");
+			caseIdList[i].insert(16, "-");
+			caseIdList[i].insert(12, "-");
+			caseIdList[i].insert(8, "-");
 			//Time is a double of microseconds since Epoch, translate to human readable
-			printf("Time: %s\n", translateTimestamp( timeList[i] ).c_str() );
-			printf("\n");
+			//NOTICE - autograder expects a single string output
+			printf("Case: %s\nItem: %s\nACTION: %s\nTime: %s\n\n",
+						caseIdList[i].c_str(),
+						itemIdList[i].c_str(),
+						stateList[i].c_str(),
+						translateTimestamp( timeList[i] ).c_str() );
 		}
 	}
 	else
 	{
 		for( int i = 0; i < numEntries; i++ )
 		{
-			//decrypt the case id for human readable output
-			decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
-			printf("Case: %s\n", caseIdList[i].c_str() );
-			//decrypt the item id for human readable output
-			decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
-			printf("Item: %s\n", itemIdList[i].c_str() );
-			//State is not encrypted, print as is
-			printf("ACTION: %s\n", stateList[i].c_str() );
+			//INITIAL block is not encrypted
+			if( !listContainsInitialBlock )
+			{
+				//decrypt the case id for human readable output
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				//decrypt the item id for human readable output
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+			}
+			else if( 0 != i )
+			{
+				//decrypt the case id for human readable output
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				//decrypt the item id for human readable output
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+			}
+			//re-apply hifens
+			caseIdList[i].insert(20, "-");
+			caseIdList[i].insert(16, "-");
+			caseIdList[i].insert(12, "-");
+			caseIdList[i].insert(8, "-");
 			//Time is a double of microseconds since Epoch, translate to human readable
-			printf("Time: %s\n", translateTimestamp( timeList[i] ).c_str() );
-			printf("\n");
+			//NOTICE - autograder expects a single string output
+			printf("Case: %s\nItem: %s\nACTION: %s\nTime: %s\n\n",
+						caseIdList[i].c_str(),
+						itemIdList[i].c_str(),
+						stateList[i].c_str(),
+						translateTimestamp( timeList[i] ).c_str() );
 		}
 	}
 	
@@ -1297,8 +1356,9 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 /**
  * @dev Verify method that will check the blockchain for a set of potential errors
  */
-void verify()
+int verify()
 {
+	int result = 0;
 	bool allGood = true;
 	int transCount = 0;
 	//create dynamic lists to track linkage of case/item/states/creator
@@ -1333,6 +1393,9 @@ void verify()
 		
 		//additional variables to assist with verification
 		uint64_t lastBlockTime = 0;
+		unsigned char tmpINI[] = {'I','N','I','T','I','A','L','\0','\0','\0','\0','\0'};
+		string initialState = "";
+		initialState.append((const char*)&tmpINI[0], BLOCK_STATE_SIZE);
 		unsigned char tmpCI[] = {'C','H','E','C','K','E','D','I','N','\0','\0','\0'};
 		string checkinState = "";
 		checkinState.append((const char*)&tmpCI[0], BLOCK_STATE_SIZE);
@@ -1358,25 +1421,56 @@ void verify()
 		endPtr = fopen( COC_FILE.c_str(), "rb" );
 		fseek( endPtr, 0, SEEK_END );
 		
-		//get the state of the first block (SEEK_SET = start of file)
-		fseek( fPtr, BLOCK_DATA_LEN_OFFSET, SEEK_SET );
-		//Compute the offset to read the length of this data field
+		//since we are reading all fields, we can read them in order
+		//and leverage that fread will advance the pointer with each read
+		fread( readPrevHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr);
+		fread( readTimestamp.byteTime, sizeof(char), BLOCK_TIMESTAMP_SIZE, fPtr);
+		fread( readCaseId, sizeof(char), BLOCK_CASE_ID_SIZE, fPtr);
+		fread( readItemId, sizeof(char), BLOCK_ITEM_ID_SIZE, fPtr);
+		fread( readState, sizeof(char), BLOCK_STATE_SIZE, fPtr );
+		fread( readCreator, sizeof(char), BLOCK_CREATOR_SIZE, fPtr );
+		fread( readOwner, sizeof(char), BLOCK_OWNER_SIZE, fPtr );
 		fread( &readDataLen.byteLen[0], sizeof(char), BLOCK_DATA_LEN_SIZE, fPtr );
+		
+		//#1 check the integrity of the INITIAL block
+		string actualIniState = "";
+		actualIniState.append((const char*)&readState[0], BLOCK_STATE_SIZE);
+		bool validIniBlock = true;
+		if( 0 != actualIniState.compare( initialState ) )
+		{
+			//Initial block is not marked as initial, flag error
+			allGood = true;
+			validIniBlock = false;
+		}
+		
 		//advance from the DataLen field to the end of the data field
-		//(recall the "fread" advances the fPtr)
 		fseek( fPtr, readDataLen.intLen, SEEK_CUR );
 		//read the hash of this block before advancing to the next
 		//and store it in the Previous Hash global variable
 		fread( readCurHash, sizeof(char), BLOCK_PREV_HASH_SIZE, fPtr );
 		//after reading the hash, increment transaction counter
 		transCount++;
+		
+		//log if the INITIAL block had errors
+		if( !validIniBlock )
+		{
+			//convert the bytes back to human readable Hash value
+			//for reporting purposes
+			std::stringstream ss;
+			ss << hex;
+			for(int i=0;i<BLOCK_PREV_HASH_SIZE;++i)
+				ss << std::setw(2) << std::setfill('0') << (int)readCurHash[i];
+			string stringHash = ss.str();
+			badBlocks.push_back(stringHash);
+			failureCondition.push_back(1);
+		}
+		
+		
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
 		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
 		{
-			//notice, this method does no verification of blockchain integrity
-			//offset computational support
-			int offsetToNextField = 0;
+			//variables to assist with field verification
 			string tmpCase = "";
 			string tmpItem = "";
 			string tmpState = "";
@@ -1406,14 +1500,14 @@ void verify()
 			tmpCreator.append((const char*)&readCreator[0], BLOCK_CREATOR_SIZE);
 			
 			//--- First Round of Verification Checks ---
-			//	1) Previous Hash field matches the hash of the parent block
-			//	2) Strictly Increasing Time
-			//	3) Unique Item ID has unchanged Case ID
-			//	4) Unique Item ID has unchanged Creator
-			//	5) Item has appropriate state changes
-			//		(Checkin > Checkout / Checkout > Checkin / Checkin > Removed)
+			//	2) Previous Hash field matches the hash of the parent block
+			//	3) Strictly Increasing Time
+			//	4) Unique Item ID has unchanged Case ID
+			//	5) Unique Item ID has unchanged Creator
+			//	6) Item has appropriate state changes
+			//		(Initial is Checkin || Checkin > Checkout || Checkout > Checkin || Checkin > Removed)
 			
-			//#1
+			//#2
 			bool parentHashMatch = true;
 			for( int i = 0; i < BLOCK_PREV_HASH_SIZE; i++ )
 			{
@@ -1426,7 +1520,7 @@ void verify()
 				}
 			}
 			
-			//#2
+			//#3
 			bool increasingTime = true;
 			if( lastBlockTime > tmpTime )
 			{
@@ -1435,9 +1529,10 @@ void verify()
 			}
 			lastBlockTime = tmpTime;
 			
-			//#3/4
+			//#4/5/6
 			bool unchangedCaseId = true;
 			bool unchangedCreator = true;
+			bool validInitialState = true;
 			//check if this item is being tracked yet
 			int itemMonitored = -1;
 			for( int i = 0; i < monitoredItemId.size(); i++ )
@@ -1468,12 +1563,19 @@ void verify()
 				monitoredItemId.push_back( tmpItem );
 				monitoredCreator.push_back( tmpCreator );
 				monitoredState.push_back( tmpState );
+				//partial check of #5, check initial value is CHECKEDIN
+				//determine previous state of the item
+				if( 0 != checkinState.compare( tmpState ) )
+				{
+					validInitialState = false;
+					allGood = false;
+				}
 			}
 			
-			//#5
+			//#6
 			//leverage previous check for item existence in moitoring yet
 			bool validStateChange = false;
-			if( -1 != itemMonitored )
+			if( (-1 != itemMonitored) && (validInitialState) )
 			{
 				//determine previous state of the item
 				if( 0 == checkinState.compare( monitoredState[itemMonitored] ) )
@@ -1538,9 +1640,9 @@ void verify()
 			transCount++;
 			
 			//--- First Round of Verification Checks ---
-			//	6) Recompute the hash of the stored data and compare to the stored hash
+			//	7) Recompute the hash of the stored data and compare to the stored hash
 			
-			//#6
+			//#7
 			bool hashesMatch = true;
 			string thisBlock = "";
 			//recreate the block to compute it's hash and compare to the stored hash
@@ -1565,36 +1667,44 @@ void verify()
 			
 			//--- End of Second Round Verificatoin ---
 			
+			//convert the bytes back to human readable Hash value
+			//for reporting purposes
+			std::stringstream ss;
+			ss << hex;
+			for(int i=0;i<BLOCK_PREV_HASH_SIZE;++i)
+				ss << std::setw(2) << std::setfill('0') << (int)readCurHash[i];
+			string stringHash = ss.str();
+			
 			//Catalog all failures for this Block
 			if( !parentHashMatch )
 			{
-				badBlocks.push_back(tmpCurHash);
-				failureCondition.push_back(1);
+				badBlocks.push_back(stringHash);
+				failureCondition.push_back(2);
 			}
 			if( !increasingTime )
 			{
-				badBlocks.push_back(tmpCurHash);
-				failureCondition.push_back(2);
+				badBlocks.push_back(stringHash);
+				failureCondition.push_back(3);
 			}
 			if( !unchangedCaseId )
 			{
-				badBlocks.push_back(tmpCurHash);
-				failureCondition.push_back(3);
+				badBlocks.push_back(stringHash);
+				failureCondition.push_back(4);
 			}
 			if( !unchangedCreator )
 			{
-				badBlocks.push_back(tmpCurHash);
-				failureCondition.push_back(4);
+				badBlocks.push_back(stringHash);
+				failureCondition.push_back(5);
 			}
 			if( !validStateChange )
 			{
-				badBlocks.push_back(tmpCurHash);
-				failureCondition.push_back(5);
+				badBlocks.push_back(stringHash);
+				failureCondition.push_back(6);
 			}
 			if( !hashesMatch )
 			{
-				badBlocks.push_back(tmpCurHash);
-				failureCondition.push_back(6);
+				badBlocks.push_back(stringHash);
+				failureCondition.push_back(7);
 			}
 			
 		}
@@ -1603,12 +1713,13 @@ void verify()
 	
 	/*
 		CONDITIONS VERIFIED
-		1) Previous Hash field matches the hash of the parent block
-		2) Strictly Increasing Time
-		3) Unique Item ID has unchanged Case ID
-		4) Unique Item ID has unchanged Creator
-		5) Item has appropriate state changes
-		6) Recompute the hash of the stored data and compare to the stored hash
+		1) Invalid INITIAL block
+		2) Previous Hash field matches the hash of the parent block
+		3) Strictly Increasing Time
+		4) Unique Item ID has unchanged Case ID
+		5) Unique Item ID has unchanged Creator
+		6) Item has appropriate state changes
+		7) Recompute the hash of the stored data and compare to the stored hash
 	*/
 	//print how many transactions are in the blockchain
 	printf("Transactions in blockchain: %d\n", transCount);
@@ -1618,6 +1729,7 @@ void verify()
 	}
 	else
 	{
+		result = 1;
 		//Errors were detected
 		printf("State of blockchain: ERROR\n");
 		for( int i = 0; i < badBlocks.size(); i++ )
@@ -1628,27 +1740,32 @@ void verify()
 			switch( failureCondition[i] )
 			{
 				case 1:
-						printf("Previous Hash block content does not match parent block hash\n");
+						printf("Invalid INITIAL block fields\n");
 					break;
 				case 2:
-						printf("Time not strictly increasing block chain events\n");
+						printf("Previous Hash block content does not match parent block hash\n");
 					break;
 				case 3:
-						printf("Case ID changed for Evidence Item\n");
+						printf("Time not strictly increasing block chain events\n");
 					break;
 				case 4:
-						printf("Creator changed for Evidence Item\n");
+						printf("Case ID changed for Evidence Item\n");
 					break;
 				case 5:
-						printf("Evidence Item had invalid State Change\n");
+						printf("Creator changed for Evidence Item\n");
 					break;
 				case 6:
+						printf("Evidence Item had invalid State Change\n");
+					break;
+				case 7:
 						printf("Block contents do not match block checksum\n");
 					break;
 			}
 			printf("\n");
 		}
 	}
+	
+	return result;
 }
 
 /*
@@ -1701,10 +1818,15 @@ int main( int argc, char* argv[] )
 				if( 0 == strcmp("-c", argv[arg]) )
 				{
 					cmdCaseId = argv[arg+1];
+					//trim out hifens before storing
+					cmdCaseId.erase(23, 1);
+					cmdCaseId.erase(18, 1);
+					cmdCaseId.erase(13, 1);
+					cmdCaseId.erase(8, 1);
 					//do not exceed 32char length
 					if( cmdCaseId.size() > 32 )
 					{
-						printf("Case ID longer than 32 characters. Trimming input.\n");
+						//printf("Case ID longer than 32 characters. Trimming input.\n");
 						cmdCaseId = cmdCaseId.substr(0, 32);
 					}
 				}
@@ -1718,7 +1840,7 @@ int main( int argc, char* argv[] )
 					//do not exceed 12char length
 					if( cmdCreator.size() > 12 )
 					{
-						printf("Creator longer than 12 characters. Trimming input.\n");
+						//printf("Creator longer than 12 characters. Trimming input.\n");
 						cmdCreator = cmdCreator.substr(0, 12);
 					}
 				}
@@ -1748,16 +1870,15 @@ int main( int argc, char* argv[] )
 							//do not exceed 32char length
 							if( cmdItemId.size() > 32 )
 							{
-								printf("Item ID longer than 32 characters. Trimming input.\n");
+								//printf("Item ID longer than 32 characters. Trimming input.\n");
 								cmdItemId = cmdItemId.substr(0, 32);
 							}
-							//(TODO) encrypt Case & Item here
-							addItemToCase( cmdCaseId, cmdItemId, cmdCreator );
+							mainResult = addItemToCase( cmdCaseId, cmdItemId, cmdCreator );
 						}
 					}
 					if( 0 == cmdItemId.compare("") )
 					{
-						printf("No Item ID provided\n");
+						//printf("No Item ID provided\n");
 						mainResult = 1;
 					}
 				}
@@ -1765,19 +1886,19 @@ int main( int argc, char* argv[] )
 				{
 					if( 0 == cmdCaseId.compare("") )
 					{
-						printf("No Case ID provided\n");
+						//printf("No Case ID provided\n");
 						mainResult = 1;
 					}
 					if( 0 == cmdCreator.compare("") )
 					{
-						printf("No Creator provided\n");
+						//printf("No Creator provided\n");
 						mainResult = 1;
 					}
 				}
 			}
 			else
 			{
-				printf("Invalid Password\n");
+				//printf("Invalid Password\n");
 				mainResult = 1;
 			}
 		}
@@ -1811,21 +1932,21 @@ int main( int argc, char* argv[] )
 						//do not exceed 32char length
 						if( cmdItemId.size() > 32 )
 						{
-							printf("Item ID longer than 32 characters. Trimming input.\n");
+							//printf("Item ID longer than 32 characters. Trimming input.\n");
 							cmdItemId = cmdItemId.substr(0, 32);
 						}
-						checkoutItem( cmdItemId, passwordId );
+						mainResult = checkoutItem( cmdItemId, passwordId );
 					}
 				}
 				if( 0 == cmdItemId.compare("") )
 				{
-					printf("No Item ID provided\n");
+					//printf("No Item ID provided\n");
 					mainResult = 1;
 				}
 			}
 			else
 			{
-				printf("Invalid Password\n");
+				//printf("Invalid Password\n");
 				mainResult = 1;
 			}
 		}
@@ -1859,21 +1980,21 @@ int main( int argc, char* argv[] )
 						//do not exceed 32char length
 						if( cmdItemId.size() > 32 )
 						{
-							printf("Item ID longer than 32 characters. Trimming input.\n");
+							//printf("Item ID longer than 32 characters. Trimming input.\n");
 							cmdItemId = cmdItemId.substr(0, 32);
 						}
-						checkinItem( cmdItemId, passwordId );
+						mainResult = checkinItem( cmdItemId, passwordId );
 					}
 				}
 				if( 0 == cmdItemId.compare("") )
 				{
-					printf("No Item ID provided\n");
+					//printf("No Item ID provided\n");
 					mainResult = 1;
 				}
 			}
 			else
 			{
-				printf("Invalid Password\n");
+				//printf("Invalid Password\n");
 				mainResult = 1;
 			}
 		}
@@ -1897,7 +2018,7 @@ int main( int argc, char* argv[] )
 					//do not exceed 32char length
 					if( cmdItemId.size() > 32 )
 					{
-						printf("Item ID longer than 32 characters. Trimming input.\n");
+						//printf("Item ID longer than 32 characters. Trimming input.\n");
 						cmdItemId = cmdItemId.substr(0, 32);
 					}
 				}
@@ -1905,7 +2026,8 @@ int main( int argc, char* argv[] )
 			//Find the Removal Type
 			for( int arg = 0; arg < argc; arg++ )
 			{
-				if( 0 == strcmp("-y", argv[arg]) )
+				//guidelines specify "-y" and "--why" as inputs here
+				if( (0 == strcmp("-y", argv[arg])) || (0 == strcmp("--why", argv[arg])) )
 				{
 					cmdRemovalType = argv[arg+1];
 					//do not exceed 12char length
@@ -1918,8 +2040,7 @@ int main( int argc, char* argv[] )
 			//Find the reason for removal text
 			for( int arg = 0; arg < argc; arg++ )
 			{
-				//guidelines specify "-o" and "--why" as reason flags
-				if( (0 == strcmp("-o", argv[arg])) || (0 == strcmp("--why", argv[arg])) )
+				if( 0 == strcmp("-o", argv[arg]) )
 				{
 					//append the imediate next string
 					arg++;
@@ -1955,40 +2076,41 @@ int main( int argc, char* argv[] )
 					//RELEASED requires a non-empty reason
 					if( 0 == cmdRemovalType.compare("RELEASED") )
 					{
-						if( 0 != cmdReason.compare("") )
+						mainResult = removeItem( cmdItemId, 3, cmdReason );
+						/*if( 0 != cmdReason.compare("") )
 						{
-							removeItem( cmdItemId, 3, cmdReason );
+							mainResult = removeItem( cmdItemId, 3, cmdReason );
 						}
 						else
 						{
-							printf("Attempted to RELEASE evidence without Reason\n");
+							//printf("Attempted to RELEASE evidence without Reason\n");
 							mainResult = 1;
-						}
+						}*/
 					}
 					//the other 2 can have it filled out optionally
 					else if( 0 == cmdRemovalType.compare("DISPOSED") )
 					{
-						removeItem( cmdItemId, 1, cmdReason );
+						mainResult = removeItem( cmdItemId, 1, cmdReason );
 					}
 					else if( 0 == cmdRemovalType.compare("DESTROYED") )
 					{
-						removeItem( cmdItemId, 2, cmdReason );
+						mainResult = removeItem( cmdItemId, 2, cmdReason );
 					}
 					else
 					{
-						printf("Uknown Removal command\n");
+						//printf("Uknown Removal command\n");
 						mainResult = 1;
 					}
 				}
 				if( 0 == cmdItemId.compare("") )
 				{
-					printf("No Item ID provided\n");
+					//printf("No Item ID provided\n");
 					mainResult = 1;
 				}
 			}
 			else
 			{
-				printf("Invalid Password\n");
+				//printf("Invalid Password\n");
 				mainResult = 1;
 			}
 		}
@@ -2016,10 +2138,15 @@ int main( int argc, char* argv[] )
 						if( 0 == strcmp("-c", argv[arg]) )
 						{
 							cmdCaseId = argv[arg+1];
+							//trim out hifens before comparing
+							cmdCaseId.erase(23, 1);
+							cmdCaseId.erase(18, 1);
+							cmdCaseId.erase(13, 1);
+							cmdCaseId.erase(8, 1);
 							//do not exceed 32char length
 							if( cmdCaseId.size() > 32 )
 							{
-								printf("Case ID longer than 32 characters. Trimming input.\n");
+								//printf("Case ID longer than 32 characters. Trimming input.\n");
 								cmdCaseId = cmdCaseId.substr(0, 32);
 							}
 							showItems( cmdCaseId );
@@ -2027,7 +2154,7 @@ int main( int argc, char* argv[] )
 					}
 					if( 0 == cmdCaseId.compare("") )
 					{
-						printf("No Case ID provided\n");
+						//printf("No Case ID provided\n");
 						mainResult = 1;
 					}
 				}
@@ -2049,10 +2176,15 @@ int main( int argc, char* argv[] )
 						if( 0 == strcmp("-c", argv[arg]) )
 						{
 							cmdCaseId = argv[arg+1];
+							//trim out hifens before comparing
+							cmdCaseId.erase(23, 1);
+							cmdCaseId.erase(18, 1);
+							cmdCaseId.erase(13, 1);
+							cmdCaseId.erase(8, 1);
 							//do not exceed 32char length
 							if( cmdItemId.size() > 32 )
 							{
-								printf("Case ID longer than 32 characters. Trimming input.\n");
+								//printf("Case ID longer than 32 characters. Trimming input.\n");
 								cmdItemId = cmdItemId.substr(0, 32);
 							}
 						}
@@ -2066,7 +2198,7 @@ int main( int argc, char* argv[] )
 							//do not exceed 32char length
 							if( cmdItemId.size() > 32 )
 							{
-								printf("Item ID longer than 32 characters. Trimming input.\n");
+								//printf("Item ID longer than 32 characters. Trimming input.\n");
 								cmdItemId = cmdItemId.substr(0, 32);
 							}
 						}
@@ -2105,7 +2237,7 @@ int main( int argc, char* argv[] )
 					}
 					else
 					{
-						printf("Invalid Password\n");
+						//printf("Invalid Password\n");
 						mainResult = 1;
 					}
 				}
@@ -2116,14 +2248,30 @@ int main( int argc, char* argv[] )
 			/*
 			 * ==== INIT OPERATION ====
 			 */
-			init();
+			if( 2 == argc )
+			{
+				init();
+			}
+			else
+			{
+				//init should reject any additional arguments
+				mainResult = 1;
+			}
 		}
 		else if( 0 == inputCommand.compare("verify") )
 		{
 			/*
 			 * ==== VERIFY OPERATION ====
 			 */
-			verify();
+			if( 2 == argc )
+			{
+				mainResult = verify();
+			}
+			else
+			{
+				//verify should reject any additional arguments
+				mainResult = 1;
+			}
 		}
 		else
 		{

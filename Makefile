@@ -2,7 +2,7 @@
 #Specify a default build dependency set
 default: bchoc
 
-#Build the "boot_info" binary
+#Build the "bchoc" binary
 bchoc: FORCE
 	g++ -std=c++11 bchoc.cpp -o bchoc -lssl -lcrypto
 	chmod +x bchoc
@@ -16,4 +16,4 @@ FORCE:
 #name is not found
 clean:
 	rm bchoc || true
-	rm CoC.bin || true
+	rm blockchain || true
