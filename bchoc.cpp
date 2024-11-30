@@ -52,7 +52,9 @@ union
 //be 0 - 2^32 bytes long per the value in dataLen
 
 //define constants for this effort (all of the following are in bytes)
-const string COC_FILE = "blockchain";
+const string BCHOC_FILE_PATH = getenv("BCHOC_FILE_PATH");
+string FILE_NAME = "blockchain"; 
+const string COC_FILE = BCHOC_FILE_PATH + "/" + FILE_NAME;
 //Size & offset constants for each block (before variable data field)
 /*
 	Data Layout
@@ -559,7 +561,8 @@ int checkPassword( string cmpPassword )
  * Methods providing core functionality
  * =============
  */
-
+ 
+ #include <sys/stat.h>
 /**
  * @dev Method to create an INITIAL block if none exists
  */
@@ -580,6 +583,12 @@ void init()
 		{
 			//INITIAL block does not exist, create one
 			printf("Blockchain file not found. Created INITIAL block\n");
+			//create the folder per BCHOC_FILE_PATH (first check it doesnt already exist)
+			struct stat existence;
+			if( 0 != stat(BCHOC_FILE_PATH.c_str(), &existence) )
+			{
+				mkdir( BCHOC_FILE_PATH.c_str(), 0777 );
+			}
 			//Initialize the fields (reset 0s everything as deired)
 			resetBlockBytes();
 			//get the time the INITIAL block was created
