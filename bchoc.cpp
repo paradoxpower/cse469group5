@@ -1789,6 +1789,15 @@ int verify()
 			}
 			
 		}
+		//finally, check no incomplete blocks exist
+		//meaning the end of the last block equals end of file
+		if( ftell(fPtr) != ftell(endPtr) )
+		{
+			//no specific block to call out
+			badBlocks.push_back("NULL");
+			failureCondition.push_back(8);
+		}
+		
 		fclose(fPtr);
 	}
 	else
@@ -1805,6 +1814,7 @@ int verify()
 		5) Unique Item ID has unchanged Case ID
 		6) Unique Item ID has unchanged Creator
 		7) Item has appropriate state changes
+		8) Trailing bytes near end of file (incomplete block risk)
 	*/
 	//print how many transactions are in the blockchain
 	printf("Transactions in blockchain: %d\n", transCount);
@@ -1844,6 +1854,9 @@ int verify()
 					break;
 				case 7:
 						printf("Evidence Item had invalid State Change\n");
+					break;
+				case 8:
+						printf("Incomplete block detected at end of file\n");
 					break;
 			}
 			printf("\n");
