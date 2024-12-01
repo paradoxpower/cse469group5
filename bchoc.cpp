@@ -698,8 +698,7 @@ int addItemToCase( string inCaseId, string inItemId, string inCreator )
 		memcpy( &blockState[0], defaultState.c_str(), defaultState.size() );
 		//copy creator id
 		memcpy( &blockCreator[0], inCreator.c_str(), inCreator.size() );
-		//Owner is set to creator since this is a creation event
-		memcpy( &blockOwner[0], inCreator.c_str(), inCreator.size() );
+		//Owner is left in default empty state
 		//set the data length to 0 since there is no data field value
 		blockDataLen.intLen = 0;
 		
@@ -883,7 +882,7 @@ int checkinItem( string inItemId, int checkoutPassword )
  * @param removalType is the state change to DESTROYED/DISPOSED/RELEASED
  * @param removalReason is the string to put in the data field for the event (optional for all but RELEASED)
  */
-int removeItem( string inItemId, int removalType, string removalReason )
+int removeItem( string inItemId, int removalType, string removalReason , int checkoutPassword )
 {
 	//check if method successfully added (0 = success / 1 = failure)
 	int result = 0;
@@ -923,8 +922,20 @@ int removeItem( string inItemId, int removalType, string removalReason )
 		}
 		memcpy( &blockState[0], removalState.c_str(), removalState.size() );
 		//--getEvidenceState() has already stored the Creator in the blockCreator after finding a matching Item ID
-		//Owner is set to creator since this is a removal event
-		memcpy( &blockOwner[0], &blockCreator[0], BLOCK_CREATOR_SIZE );
+		//Set the owner according to the password used
+		string Owner = "";
+		switch( checkoutPassword )
+		{
+			case 1: Owner = "POLICE";
+				break;
+			case 2: Owner = "LAWYER";
+				break;
+			case 3: Owner = "ANALYST";
+				break;
+			case 4: Owner = "EXECUTIVE";
+				break;
+		}
+		memcpy( &blockOwner[0], Owner.c_str(), Owner.size() );
 		//check if a comment has been added to the data field
 		string nextBlock;
 		if( 0 != removalReason.compare("") )
@@ -1539,7 +1550,6 @@ int verify()
 			string tmpCreator = "";
 			uint64_t tmpTime = 0;
 			string tmpData = "";
-			string tmpPrevHash = "";
 			
 			//since we are reading all fields, we can read them in order
 			//and leverage that fread will advance the pointer with each read
@@ -1722,9 +1732,11 @@ int verify()
 			//for reporting purposes
 			std::stringstream ss;
 			ss << hex;
+			unsigned char tmpCurHash[BLOCK_PREV_HASH_SIZE];
+			memcpy( &tmpCurHash[0], recomputedHash.c_str(), BLOCK_PREV_HASH_SIZE );
 			for(int i = 0; i < BLOCK_PREV_HASH_SIZE; ++i)
 			{
-				ss << std::setw(2) << std::setfill('0') << (int)recomputedHash[i];
+				ss << std::setw(2) << std::setfill('0') << (int)tmpCurHash[i];
 			}
 			string stringHash = ss.str();
 			
@@ -2134,7 +2146,8 @@ int main( int argc, char* argv[] )
 			}
 			
 			//Confirm Password is that of "CREATOR"
-			if( 0 == checkPassword( cmdPassword ) )
+			int usedPassword = checkPassword( cmdPassword );
+			if( 0 <= usedPassword )
 			{
 				//Confirm non-empty strings for mandatory checks
 				if( 0 != cmdItemId.compare("") )
@@ -2142,7 +2155,7 @@ int main( int argc, char* argv[] )
 					//RELEASED requires a non-empty reason
 					if( 0 == cmdRemovalType.compare("RELEASED") )
 					{
-						mainResult = removeItem( cmdItemId, 3, cmdReason );
+						mainResult = removeItem( cmdItemId, 3, cmdReason, usedPassword );
 						/*if( 0 != cmdReason.compare("") )
 						{
 							mainResult = removeItem( cmdItemId, 3, cmdReason );
@@ -2156,11 +2169,11 @@ int main( int argc, char* argv[] )
 					//the other 2 can have it filled out optionally
 					else if( 0 == cmdRemovalType.compare("DISPOSED") )
 					{
-						mainResult = removeItem( cmdItemId, 1, cmdReason );
+						mainResult = removeItem( cmdItemId, 1, cmdReason, usedPassword );
 					}
 					else if( 0 == cmdRemovalType.compare("DESTROYED") )
 					{
-						mainResult = removeItem( cmdItemId, 2, cmdReason );
+						mainResult = removeItem( cmdItemId, 2, cmdReason, usedPassword );
 					}
 					else
 					{
