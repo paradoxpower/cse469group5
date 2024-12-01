@@ -1427,6 +1427,8 @@ int verify()
 	int result = 0;
 	bool allGood = true;
 	int transCount = 0;
+	//track all Hashes, it has been expressed that each hash will be unique
+	vector<string> monitoredHash;
 	//create dynamic lists to track linkage of case/item/states/creator
 	vector<string> monitoredCaseId;
 	vector<string> monitoredItemId;
@@ -1505,8 +1507,8 @@ int verify()
 		if( 0 != actualIniState.compare( initialState ) )
 		{
 			//Initial block is not marked as initial, flag error
-			allGood = false;
 			validIniBlock = false;
+			allGood = false;
 		}
 		int lengthOfData = readDataLen.intLen;
 		unsigned char initDataField[lengthOfData];
@@ -1574,15 +1576,15 @@ int verify()
 			//after reading the data field, increment transaction counter
 			transCount++;
 			
-			cout << "Head at: " << blockHeadPtr << endl;
+			//cout << "Head at: " << blockHeadPtr << endl;
 			//cout << "Prev Hash: " << readPrevHash << endl;
 			//cout << "Time: " << readTimestamp.dblTime << endl;
 			//cout << "Case ID (encrypt): " << readCaseId << endl;
 			//cout << "Item ID (encrypt): " << readItemId << endl;
-			cout << "State: " << readState << " / at offset: " << (blockStatePtr - blockHeadPtr) << endl;
+			//cout << "State: " << readState << " / at offset: " << (blockStatePtr - blockHeadPtr) << endl;
 			//cout << "Creator: " << readCreator << endl;
 			//cout << "Owner: " << readOwner << endl;
-			cout << "DataLen: " << readDataLen.intLen << " / at offset: " << (blockDataLenPtr - blockHeadPtr) << endl;
+			//cout << "DataLen: " << readDataLen.intLen << " / at offset: " << (blockDataLenPtr - blockHeadPtr) << endl;
 			
 			//Then we translate the data fields we intend to do futher tracking/comparisons
 			//of into other data types instead of raw bytes
@@ -1594,10 +1596,11 @@ int verify()
 			
 			//--- Verification Checks ---
 			//	2) Previous Hash matches the hash of the parent block
-			//	3) Strictly Increasing Time
-			//	4) Unique Item ID has unchanged Case ID
-			//	5) Unique Item ID has unchanged Creator
-			//	6) Item has appropriate state changes
+			//	3) 2 Blocks have same parent Hash
+			//	4) Strictly Increasing Time
+			//	5) Unique Item ID has unchanged Case ID
+			//	6) Unique Item ID has unchanged Creator
+			//	7) Item has appropriate state changes
 			//		(Initial is Checkin || Checkin > Checkout || Checkout > Checkin || Checkin > Removed)
 			
 			//#2
@@ -1607,9 +1610,24 @@ int verify()
 			if( 0 != recomputedHash.compare(prevHashResult) )
 			{
 				parentHashMatch = false;
+				allGood = false;
 			}
 			
 			//#3
+			bool uniqueHash = true;
+			for( int i = 0; i < monitoredHash.size(); i++ )
+			{
+				//on match, 2 blocks have same parent
+				if( 0 == prevHashResult.compare( monitoredHash[i] ) )
+				{
+					uniqueHash = false;
+					allGood = false;
+				}
+			}
+			//in all cases, append the hash to the list of monitored hashes
+			monitoredHash.push_back( prevHashResult );
+			
+			//#4
 			bool increasingTime = true;
 			if( lastBlockTime > tmpTime )
 			{
@@ -1618,7 +1636,7 @@ int verify()
 			}
 			lastBlockTime = tmpTime;
 			
-			//#4/5/6
+			//#5/6/7
 			bool unchangedCaseId = true;
 			bool unchangedCreator = true;
 			bool validInitialState = true;
@@ -1652,8 +1670,7 @@ int verify()
 				monitoredItemId.push_back( tmpItem );
 				monitoredCreator.push_back( tmpCreator );
 				monitoredState.push_back( tmpState );
-				//partial check of #5, check initial value is CHECKEDIN
-				//determine previous state of the item
+				//partial check of #7, check initial value is CHECKEDIN
 				if( 0 != checkinState.compare( tmpState ) )
 				{
 					validInitialState = false;
@@ -1661,9 +1678,9 @@ int verify()
 				}
 			}
 			
-			//#6
+			//#7
 			//leverage previous check for item existence in moitoring yet
-			bool validStateChange = false;
+			bool validStateChange = true;
 			if( (-1 != itemMonitored) && (validInitialState) )
 			{
 				//determine previous state of the item
@@ -1687,6 +1704,10 @@ int verify()
 					{
 						validStateChange = true;
 					}
+					else
+					{
+						validStateChange = false;
+					}
 				}
 				else if( 0 == checkoutState.compare( monitoredState[itemMonitored] ) )
 				{
@@ -1695,6 +1716,10 @@ int verify()
 					if( 0 == tmpState.compare( checkinState ) )
 					{
 						validStateChange = true;
+					}
+					else
+					{
+						validStateChange = false;
 					}
 				}
 				else
@@ -1746,25 +1771,30 @@ int verify()
 				badBlocks.push_back(stringHash);
 				failureCondition.push_back(2);
 			}
-			if( !increasingTime )
+			if( !uniqueHash )
 			{
 				badBlocks.push_back(stringHash);
 				failureCondition.push_back(3);
 			}
-			if( !unchangedCaseId )
+			if( !increasingTime )
 			{
 				badBlocks.push_back(stringHash);
 				failureCondition.push_back(4);
 			}
-			if( !unchangedCreator )
+			if( !unchangedCaseId )
 			{
 				badBlocks.push_back(stringHash);
 				failureCondition.push_back(5);
 			}
-			if( !validStateChange )
+			if( !unchangedCreator )
 			{
 				badBlocks.push_back(stringHash);
 				failureCondition.push_back(6);
+			}
+			if( (!validStateChange) || (!validInitialState) )
+			{
+				badBlocks.push_back(stringHash);
+				failureCondition.push_back(7);
 			}
 			
 		}
@@ -1779,10 +1809,11 @@ int verify()
 		CONDITIONS VERIFIED
 		1) Invalid INITIAL block
 		2) Previous Hash field matches the hash of the parent block
-		3) Strictly Increasing Time
-		4) Unique Item ID has unchanged Case ID
-		5) Unique Item ID has unchanged Creator
-		6) Item has appropriate state changes
+		3) 2 Blocks have same parent block hash
+		4) Strictly Increasing Time
+		5) Unique Item ID has unchanged Case ID
+		6) Unique Item ID has unchanged Creator
+		7) Item has appropriate state changes
 	*/
 	//print how many transactions are in the blockchain
 	printf("Transactions in blockchain: %d\n", transCount);
@@ -1809,15 +1840,18 @@ int verify()
 						printf("Previous Hash block content does not match parent block hash\n");
 					break;
 				case 3:
-						printf("Time not strictly increasing block chain events\n");
+						printf("2 Blocks have same parent Hash\n");
 					break;
 				case 4:
-						printf("Case ID changed for Evidence Item\n");
+						printf("Time not strictly increasing block chain events\n");
 					break;
 				case 5:
-						printf("Creator changed for Evidence Item\n");
+						printf("Case ID changed for Evidence Item\n");
 					break;
 				case 6:
+						printf("Creator changed for Evidence Item\n");
+					break;
+				case 7:
 						printf("Evidence Item had invalid State Change\n");
 					break;
 			}
