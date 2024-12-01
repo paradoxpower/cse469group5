@@ -1542,7 +1542,7 @@ int verify()
 		
 		//we need to sequentially check every block to determine the latest
 		//state of this evidence item
-		while( (ftell(fPtr) + BLOCK_MIN_SIZE) < ftell(endPtr) )
+		while( (ftell(fPtr) + BLOCK_MIN_SIZE) <= ftell(endPtr) )
 		{
 			
 			//variables to assist with field verification
@@ -1576,15 +1576,6 @@ int verify()
 			//after reading the data field, increment transaction counter
 			transCount++;
 			
-			//cout << "Head at: " << blockHeadPtr << endl;
-			//cout << "Prev Hash: " << readPrevHash << endl;
-			//cout << "Time: " << readTimestamp.dblTime << endl;
-			//cout << "Case ID (encrypt): " << readCaseId << endl;
-			//cout << "Item ID (encrypt): " << readItemId << endl;
-			//cout << "State: " << readState << " / at offset: " << (blockStatePtr - blockHeadPtr) << endl;
-			//cout << "Creator: " << readCreator << endl;
-			//cout << "Owner: " << readOwner << endl;
-			//cout << "DataLen: " << readDataLen.intLen << " / at offset: " << (blockDataLenPtr - blockHeadPtr) << endl;
 			
 			//Then we translate the data fields we intend to do futher tracking/comparisons
 			//of into other data types instead of raw bytes
