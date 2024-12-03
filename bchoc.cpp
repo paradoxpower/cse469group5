@@ -557,9 +557,10 @@ int getEvidenceState( unsigned char* itemToCheck )
 				}
 				if( itemMatch )
 				{
-					//for convenience, copy the Case ID & Creator of this evidence item
+					//for convenience, copy the Case ID, Creator, & Owner of this evidence item
 					memcpy( &blockCaseID[0], &readCase[0], BLOCK_CASE_ID_SIZE );
 					memcpy( &blockCreator[0], &readCreator[0], BLOCK_CREATOR_SIZE );
+					memcpy( &blockOwner[0], &readOwner[0], BLOCK_OWNER_SIZE );
 					//now check the state of this item
 					//check for: CHECKEDIN, CHECKEDOUT, DESTROYED, DISPOSED, RELEASED
 					unsigned char tmpCI[] = {'C','H','E','C','K','E','D','I','N','\0','\0','\0'};
@@ -881,6 +882,11 @@ int checkoutItem( string inItemId, int checkoutPassword )
 			case 4: Owner = "EXECUTIVE";
 				break;
 		}
+		//reset any lingering data in this block before copying
+		for( int i = 0; i < BLOCK_OWNER_SIZE; i++ )
+		{
+			blockOwner[i] = '\0';
+		}
 		memcpy( &blockOwner[0], Owner.c_str(), Owner.size() );
 		//DataLen is left as 0 and Data field is empty
 		
@@ -959,6 +965,11 @@ int checkinItem( string inItemId, int checkoutPassword )
 			case 4: Owner = "EXECUTIVE";
 				break;
 		}
+		//reset any lingering data in this block before copying
+		for( int i = 0; i < BLOCK_OWNER_SIZE; i++ )
+		{
+			blockOwner[i] = '\0';
+		}
 		memcpy( &blockOwner[0], Owner.c_str(), Owner.size() );
 		//DataLen is left as 0 and Data field is empty
 		
@@ -1033,20 +1044,7 @@ int removeItem( string inItemId, int removalType, string removalReason , int che
 		}
 		memcpy( &blockState[0], removalState.c_str(), removalState.size() );
 		//--getEvidenceState() has already stored the Creator in the blockCreator after finding a matching Item ID
-		//Set the owner according to the password used
-		string Owner = "";
-		switch( checkoutPassword )
-		{
-			case 1: Owner = "POLICE";
-				break;
-			case 2: Owner = "LAWYER";
-				break;
-			case 3: Owner = "ANALYST";
-				break;
-			case 4: Owner = "EXECUTIVE";
-				break;
-		}
-		memcpy( &blockOwner[0], Owner.c_str(), Owner.size() );
+		//Leave the Owner field to the last individual to access the evidence
 		//check if a comment has been added to the data field
 		string nextBlock;
 		if( 0 != removalReason.compare("") )
