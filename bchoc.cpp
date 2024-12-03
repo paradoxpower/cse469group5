@@ -694,8 +694,9 @@ int checkPassword( string cmpPassword )
 /**
  * @dev Method to create an INITIAL block if none exists
  */
-void init()
+int init()
 {
+	int result = 0;
 	bool prevInit = cocIsInit();
 	if( prevInit )
 	{
@@ -764,8 +765,13 @@ void init()
 			//make first entry in file
 			writeToFile( initialBlock );
 		}
-		//else we have a block chain witha 1st block other than an INITIAL
+		else
+		{
+			//else we have a block chain with a 1st block other than an INITIAL
+			result = 1;
+		}
 	}
+	return result;
 }
  
 /**
@@ -2484,7 +2490,7 @@ int main( int argc, char* argv[] )
 			 */
 			if( 2 == argc )
 			{
-				init();
+				mainResult = init();
 			}
 			else
 			{
