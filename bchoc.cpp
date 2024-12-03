@@ -15,9 +15,11 @@
 #include <vector>
 #include <chrono>
 #include <sys/stat.h>
-//library supporting hashes
+#include <algorithm>
+//library supporting hashes & encryption
 #include <openssl/md5.h>
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 
 //indicate the "std" namesapce is in use for this file scope
 using namespace std;
@@ -89,7 +91,7 @@ const string BCHOC_PASSWORD_ANALYST = "A65A";
 const string BCHOC_PASSWORD_EXECUTIVE = "E69E";
 const string BCHOC_PASSWORD_CREATOR = "C67C";
 //data encryption key (per guidance)
-const char* AES_KEY = "R0chLi4uLi4uLi4=";
+const string AES_KEY = "R0chLi4uLi4uLi4=";
 
 //declare a global filename to use (set during main)
 string COC_FILE;
@@ -165,20 +167,114 @@ string computeHash( string &contents )
 }
 
 /**
+ * @dev Convert UUID string to 16-byte array
+ */
+void uuidToBytes(const string& uuid, unsigned char* uuidBytes)
+{
+    string hexUuid = uuid;
+	// Remove hyphens
+    hexUuid.erase(remove(hexUuid.begin(), hexUuid.end(), '-'), hexUuid.end());
+
+    for (size_t i = 0; i < 16; ++i) {
+        string byteString = hexUuid.substr(i * 2, 2);
+        uuidBytes[i] = static_cast<unsigned char>(stoul(byteString, nullptr, 16));
+    }
+}
+
+/**
+ * @dev Prepare 16-byte input for ItemID (12 leading zeros + 4-byte big-endian integer)
+ */
+void prepareItemBytes(uint32_t itemId, unsigned char* itemBytes)
+{
+    memset(itemBytes, 0, 16); // Initialize to zeros
+    itemBytes[12] = (itemId >> 24) & 0xFF;
+    itemBytes[13] = (itemId >> 16) & 0xFF;
+    itemBytes[14] = (itemId >> 8) & 0xFF;
+    itemBytes[15] = itemId & 0xFF;
+}
+
+/**
+ * @dev Convert binary data to a byte string
+ */
+string bytesToByteString(const unsigned char* data, size_t length)
+{
+    stringstream ss;
+    for (size_t i = 0; i < length; ++i) {
+        ss << hex << setw(2) << setfill('0') << (int)data[i];
+    }
+    return ss.str();
+}
+
+/**
+ * @dev AES-ECB encryption using OpenSSL EVP interface
+ */
+string aesEncryptECB(const unsigned char* input, const std::string& key)
+{
+    unsigned char encrypted[16] = {0};
+    int outlen = 0;
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(ctx, EVP_aes_128_ecb(), nullptr, reinterpret_cast<const unsigned char*>(key.data()), nullptr);
+    EVP_CIPHER_CTX_set_padding(ctx, 0); // Disable padding
+
+    EVP_EncryptUpdate(ctx, encrypted, &outlen, input, 16);
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    return bytesToByteString(encrypted, 16);
+}
+
+/**
  * @dev Encrypt an input byte array using the constant AES_KEY
  * @param Bytes to encrypt
  * @param Length of the value
  */
-void encryptBytes( unsigned char* itemToEncrypt, int itemLength )
+void encryptBytes( unsigned char* itemToEncrypt, int itemLength, bool isCaseId )
 {
-	//how many unique bytes are in the key for XOR processing
-	int AES_KEY_length = 16;
-	//encrypt byte by byte
-	for( int i = 0; i < itemLength; i++ )
+	//translate the input into it's byte equivalent
+    unsigned char encryptedBytes[16] = {0};
+	if( isCaseId )
 	{
-		int keyPosition = i % AES_KEY_length;
-		itemToEncrypt[i] = itemToEncrypt[i] ^ AES_KEY[keyPosition];
+		//translate the input into string
+		string toEncrypt = "";
+		toEncrypt.append((const char*)itemToEncrypt, itemLength);
+		//format the string into bytes
+		uuidToBytes(toEncrypt, encryptedBytes);
 	}
+	else
+	{
+		//translate the string into an int32_t
+		uint32_t itemId = atoi( (const char*)itemToEncrypt );
+		//format the int32_t into bytes
+		prepareItemBytes(itemId, encryptedBytes);
+	}
+
+    string encryptedResult = aesEncryptECB(encryptedBytes, AES_KEY);
+    //cout << "Encrypted Case ID: " << encryptedResult << std::endl;
+	
+	//clear the input char array and copy the encrypted string into it
+	memset( &itemToEncrypt[0], 0, itemLength);
+	memcpy( &itemToEncrypt[0], encryptedResult.c_str(), itemLength );
+	
+}
+
+/**
+ * @dev AES-ECB encryption using OpenSSL EVP interface
+ */
+std::string aesDecryptECB(const unsigned char* input, const std::string& key)
+{
+    unsigned char encrypted[16] = {0};
+    int outlen = 0;
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_128_ecb(), nullptr, reinterpret_cast<const unsigned char*>(key.data()), nullptr);
+    EVP_CIPHER_CTX_set_padding(ctx, 0); // Disable padding
+
+    EVP_DecryptUpdate(ctx, encrypted, &outlen, input, 16);
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    return bytesToByteString(encrypted, 16);
 }
 
 /**
@@ -186,16 +282,31 @@ void encryptBytes( unsigned char* itemToEncrypt, int itemLength )
  * @param Bytes to decrypt
  * @param Length of the value
  */
-void decryptBytes( unsigned char* itemToDecrypt, int itemLength )
+void decryptBytes( unsigned char* itemToDecrypt, int itemLength, bool isItemId )
 {
-	//how many unique bytes are in the key for XOR processing
-	int AES_KEY_length = 16;
-	//encrypt byte by byte
-	for( int i = 0; i < itemLength; i++ )
+	string toDecrypt = "";
+	toDecrypt.append((const char*)itemToDecrypt, itemLength);
+	//cout << "To Decrypt: " << toDecrypt << endl;
+	
+	unsigned char decryptedBytes[16] = {0};
+	uuidToBytes(toDecrypt, decryptedBytes);
+	string decryptedString = aesDecryptECB( decryptedBytes, AES_KEY );
+	
+	//cout << "Decrypted: " << decryptedString <<endl;
+	
+	//Item Ids have an extra step to complete the decryption
+	if( isItemId )
 	{
-		int keyPosition = i % AES_KEY_length;
-		itemToDecrypt[i] = itemToDecrypt[i] ^ AES_KEY[keyPosition];
+		uint32_t itemVal;
+		stringstream ss;
+		ss << hex << decryptedString;
+		ss >> itemVal;
+		decryptedString = to_string(itemVal);
 	}
+	
+	//clear the input char array and copy the decrypted string into it
+	memset( &itemToDecrypt[0], 0, itemLength);
+	memcpy( &itemToDecrypt[0], decryptedString.c_str(), itemLength );
 }
 
 /**
@@ -678,7 +789,7 @@ int addItemToCase( string inCaseId, string inItemId, string inCreator )
 	memcpy( &itemID[0], inItemId.c_str(), inItemId.size() );
 	
 	//encrypt the data for simple comparison in the getEvidenceState()
-	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE );
+	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE, false );
 	int evidenceState = getEvidenceState( &itemID[0] );
 	if( -1 == evidenceState)
 	{
@@ -690,7 +801,7 @@ int addItemToCase( string inCaseId, string inItemId, string inCreator )
 		blockTimestamp.dblTime = timeOfEvent;
 		//copy Case Id (then encrypt the bytes)
 		memcpy( &blockCaseID[0], inCaseId.c_str(), inCaseId.size() );
-		encryptBytes( &blockCaseID[0], BLOCK_CASE_ID_SIZE );
+		encryptBytes( &blockCaseID[0], BLOCK_CASE_ID_SIZE, true );
 		//copy Item Id (bytes already encrypted befoer checking evidence state)
 		memcpy( &blockItemID[0], &itemID[0], BLOCK_ITEM_ID_SIZE );
 		//set default state
@@ -739,7 +850,7 @@ int checkoutItem( string inItemId, int checkoutPassword )
 	memcpy( &itemID[0], inItemId.c_str(), inItemId.size() );
 	
 	//encrypt the data for simple comparison in the getEvidenceState()
-	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE );
+	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE, false );
 	int evidenceState = getEvidenceState( &itemID[0] );
 	//operation only permitted if evidence is CHECKEDIN
 	if( CHECKEDIN == evidenceState)
@@ -782,7 +893,7 @@ int checkoutItem( string inItemId, int checkoutPassword )
 		string tmpCaseId = "";
 		unsigned char tmpCaseIdBytes[BLOCK_CASE_ID_SIZE];
 		memcpy(&tmpCaseIdBytes[0], &blockCaseID[0], BLOCK_CASE_ID_SIZE);
-		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE );
+		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE, false );
 		tmpCaseId.append((const char*)&tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE);
 		printf("Case: %s\n", tmpCaseId.c_str());
 		printf("Checked out item: %s\n", inItemId.c_str());
@@ -817,7 +928,7 @@ int checkinItem( string inItemId, int checkoutPassword )
 	memcpy( &itemID[0], inItemId.c_str(), inItemId.size() );
 	
 	//encrypt the data for simple comparison in the getEvidenceState()
-	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE );
+	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE, false );
 	int evidenceState = getEvidenceState( &itemID[0] );
 	//operation only permitted if evidence is CHECKEDOUT
 	if( CHECKEDOUT == evidenceState)
@@ -860,7 +971,7 @@ int checkinItem( string inItemId, int checkoutPassword )
 		string tmpCaseId = "";
 		unsigned char tmpCaseIdBytes[BLOCK_CASE_ID_SIZE];
 		memcpy(&tmpCaseIdBytes[0], &blockCaseID[0], BLOCK_CASE_ID_SIZE);
-		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE );
+		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE, false );
 		tmpCaseId.append((const char*)&tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE);
 		printf("Case: %s\n", tmpCaseId.c_str());
 		printf("Checked out item: %s\n", inItemId.c_str());
@@ -895,7 +1006,7 @@ int removeItem( string inItemId, int removalType, string removalReason , int che
 	memcpy( &itemID[0], inItemId.c_str(), inItemId.size() );
 	
 	//encrypt the data for simple comparison in the getEvidenceState()
-	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE );
+	encryptBytes( &itemID[0], BLOCK_ITEM_ID_SIZE, false );
 	int evidenceState = getEvidenceState( &itemID[0] );
 	//operation only permitted if evidence is CHECKEDIN
 	if( CHECKEDIN == evidenceState)
@@ -957,7 +1068,7 @@ int removeItem( string inItemId, int removalType, string removalReason , int che
 		string tmpCaseId = "";
 		unsigned char tmpCaseIdBytes[BLOCK_CASE_ID_SIZE];
 		memcpy(&tmpCaseIdBytes[0], &blockCaseID[0], BLOCK_CASE_ID_SIZE);
-		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE );
+		decryptBytes( &tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE, false );
 		tmpCaseId.append((const char*)&tmpCaseIdBytes[0], BLOCK_CASE_ID_SIZE);
 		printf("Case: %s\n", tmpCaseId.c_str() );
 		printf("Checked out item: %s\n", inItemId.c_str() );
@@ -1054,7 +1165,7 @@ void showCases()
 	for( int i = 0; i < caseIdList.size(); i++ )
 	{
 		//decrypt the data for human readable output
-		decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+		decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE, false );
 		caseIdList[i].insert(20, "-");
 		caseIdList[i].insert(16, "-");
 		caseIdList[i].insert(12, "-");
@@ -1080,7 +1191,7 @@ void showItems( string inCaseId )
 	memset( &tmpCaseId[0], 0, BLOCK_CASE_ID_SIZE );
 	memcpy( &tmpCaseId[0], inCaseId.c_str(), inCaseId.size() );
 	//then we need to encrypt the bytes to match the blockchain sotrage
-	encryptBytes( &tmpCaseId[0], BLOCK_CASE_ID_SIZE );
+	encryptBytes( &tmpCaseId[0], BLOCK_CASE_ID_SIZE, true );
 	inCaseId = "";
 	inCaseId.append((const char*)&tmpCaseId[0], BLOCK_CASE_ID_SIZE);
 	//confirm the file exists before attempting to read it
@@ -1166,7 +1277,7 @@ void showItems( string inCaseId )
 	for( int i = 0; i < itemIdList.size(); i++ )
 	{
 		//decrypt the data for human readable output
-		decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+		decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE, true );
 		printf("%s\n", itemIdList[i].c_str() );
 	}
 }
@@ -1196,16 +1307,24 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 	unsigned char tmpCaseId[BLOCK_CASE_ID_SIZE];
 	memset( &tmpCaseId[0], 0, BLOCK_CASE_ID_SIZE );
 	memcpy( &tmpCaseId[0], inCaseId.c_str(), inCaseId.size() );
-	//then we need to encrypt the bytes to match the blockchain sotrage
-	encryptBytes( &tmpCaseId[0], BLOCK_CASE_ID_SIZE );
+	//encrypting an empty string has errors, don't allow it
+	if( 0 != inCaseId.compare("") )
+	{
+		//then we need to encrypt the bytes to match the blockchain sotrage
+		encryptBytes( &tmpCaseId[0], BLOCK_CASE_ID_SIZE, true );
+	}
 	inCaseId = "";
 	inCaseId.append((const char*)&tmpCaseId[0], BLOCK_CASE_ID_SIZE);
 	//repeat process for Item ID
 	unsigned char tmpItemId[BLOCK_ITEM_ID_SIZE];
 	memset( &tmpItemId[0], 0, BLOCK_ITEM_ID_SIZE );
 	memcpy( &tmpItemId[0], inItemId.c_str(), inItemId.size() );
-	//then we need to encrypt the bytes to match the blockchain sotrage
-	encryptBytes( &tmpItemId[0], BLOCK_ITEM_ID_SIZE );
+	//encrypting an empty string has errors, don't allow it
+	if( 0 != inItemId.compare("") )
+	{
+		//then we need to encrypt the bytes to match the blockchain sotrage
+		encryptBytes( &tmpItemId[0], BLOCK_ITEM_ID_SIZE, false );
+	}
 	inItemId = "";
 	inItemId.append((const char*)&tmpItemId[0], BLOCK_ITEM_ID_SIZE);	
 	
@@ -1348,16 +1467,16 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 			if( !listContainsInitialBlock )
 			{
 				//decrypt the case id for human readable output
-				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE, false );
 				//decrypt the item id for human readable output
-				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE, true );
 			}
 			else if( 0 != i )
 			{
 				//decrypt the case id for human readable output
-				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE, false );
 				//decrypt the item id for human readable output
-				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE, true );
 			}
 			else
 			{
@@ -1386,16 +1505,16 @@ void showHistory( string inCaseId, string inItemId, int numEntries, bool reverse
 			if( !listContainsInitialBlock )
 			{
 				//decrypt the case id for human readable output
-				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE, false );
 				//decrypt the item id for human readable output
-				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE, true );
 			}
 			else if( 0 != i )
 			{
 				//decrypt the case id for human readable output
-				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE );
+				decryptBytes( (unsigned char*)caseIdList[i].c_str(), BLOCK_CASE_ID_SIZE, false );
 				//decrypt the item id for human readable output
-				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE );
+				decryptBytes( (unsigned char*)itemIdList[i].c_str(), BLOCK_ITEM_ID_SIZE, true );
 			}
 			else
 			{
